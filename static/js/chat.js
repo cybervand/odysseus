@@ -4158,7 +4158,25 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         cache: 'no-store',
       });
       if (!_getForegroundStreamState() || _backgroundStreams.has(sid)) return;
-      if (res.status !== 404) return;
+      if (res.status !== 404) {
+        // Server still owns a live run. When the browser-side reader died
+        // (dropped socket) the backend reports the run as "detached" —
+        // without re-attaching, the UI stays frozen forever on a stream
+        // nothing is reading. Abort the dead reader and re-attach.
+        let info = null;
+        try { info = await res.json(); } catch (_) {}
+        if (info && info.detached) {
+          console.warn('[stream-watchdog] Server run is detached — re-attaching via resumeStream.');
+          if (active.abortCtrl && !active.abortCtrl.signal.aborted) {
+            active.abortCtrl._reason = 'stale-local';
+            active.abortCtrl.abort();
+          }
+          _activeStreams.delete(sid);
+          _syncForegroundStreamGlobals();
+          resumeStream(sid);
+        }
+        return;
+      }
 
       console.warn('[stream-watchdog] Local stream was stale and server has no active stream. Unlocking composer.');
       if (active.abortCtrl && !active.abortCtrl.signal.aborted) {
@@ -4177,6 +4195,12 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       const messageInput = uiModule.el('message');
       if (messageInput) messageInput.disabled = false;
       _drainQueuedAgentRequests();
+      // The turn finished server-side while our reader was dead — the full
+      // transcript is already persisted. Reload it so the user is not left
+      // staring at a half-rendered turn until a manual refresh.
+      if (sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === sid) {
+        sessionModule.selectSession(sid);
+      }
     } catch (err) {
       console.warn('[stream-watchdog] Stream status probe failed:', err);
     } finally {
@@ -4728,6 +4752,15 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         updateSubmitButton('idle', _submitBtn);
         var _msgInput = document.getElementById('message');
         if (_msgInput) _msgInput.disabled = false;
+
+        // Actually do the reload the log line above promises: the backend
+        // kept running (and persisting) while the tab was frozen, so the
+        // canonical transcript is in the DB. Without this, the user sees a
+        // half-rendered turn until a manual refresh.
+        try {
+          const _rsid = sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId();
+          if (_rsid) sessionModule.selectSession(_rsid);
+        } catch (_) {}
       }, 2000); // 2 second grace period
     });
 
