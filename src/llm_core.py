@@ -645,6 +645,12 @@ def _build_ollama_payload(
         payload["options"] = options
     if tools:
         payload["tools"] = tools
+    # Same overthinking mitigation as the /v1 path: gpt-oss stalls before its
+    # first tool call at default effort on complex agentic prompts; low effort
+    # doubles the measured tool-call rate. Native Ollama takes think levels
+    # directly.
+    if "gpt-oss" in (model or "").lower():
+        payload.setdefault("think", "low")
     return payload
 
 
@@ -2240,6 +2246,14 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         # <think> blocks. Ollama /v1 accepts "think": false as a top-level param.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
+        # gpt-oss (harmony) models overthink at default effort and stall
+        # before their first tool call on complex agentic prompts — measured
+        # on a live deployment: 4/10 tool-call rate at default effort vs
+        # 8/10 at low, same prompt, same bridge. They were never trained to
+        # run WITHOUT reasoning (never send think:false); request low effort
+        # instead. Ollama's /v1 maps reasoning_effort onto its think levels.
+        if _is_ollama_openai_compat_url(url) and "gpt-oss" in (model or "").lower():
+            payload.setdefault("reasoning_effort", "low")
         _apply_local_cache_affinity(payload, url, session_id)
         _apply_local_generation_stability(payload, target_url, model)
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)
