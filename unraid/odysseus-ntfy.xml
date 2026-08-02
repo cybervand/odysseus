@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Odysseus-ntfy</Name>
+  <Repository>docker.io/binwiederhier/ntfy:latest</Repository>
+  <Registry>https://hub.docker.com/r/binwiederhier/ntfy</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/odysseus-dev/odysseus/issues</Support>
+  <Project>https://ntfy.sh/</Project>
+  <Overview>
+    ntfy push-notification server, the notifications companion for Odysseus
+    (reminders, agent/task completion, etc.). Optional.
+
+    Set Base URL below to the address your devices will use to reach ntfy
+    (e.g. http://SERVER_IP:8091, or a Tailscale/HTTPS URL), then configure the
+    same URL inside Odysseus's notification settings.
+  </Overview>
+  <Category>Tools: Network:Messenger</Category>
+  <WebUI>http://[IP]:[PORT:8091]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/odysseus-dev/odysseus/dev/unraid/odysseus-ntfy.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/public/static/images/ntfy.png</Icon>
+  <ExtraParams/>
+  <PostArgs>serve</PostArgs>
+  <Requires/>
+  <Config Name="Web Port" Target="80" Default="8091" Mode="tcp" Description="Host port for the ntfy server and web app." Type="Port" Display="always" Required="true" Mask="false">8091</Config>
+  <Config Name="Cache" Target="/var/cache/ntfy" Default="/mnt/user/appdata/odysseus/ntfy" Mode="rw" Description="Message cache so notifications survive restarts." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/odysseus/ntfy</Config>
+  <Config Name="Base URL" Target="NTFY_BASE_URL" Default="http://localhost:8091" Mode="" Description="URL your devices use to reach this ntfy server, e.g. http://SERVER_IP:8091." Type="Variable" Display="always" Required="false" Mask="false">http://localhost:8091</Config>
+</Container>

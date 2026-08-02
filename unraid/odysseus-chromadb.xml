@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Odysseus-ChromaDB</Name>
+  <Repository>docker.io/chromadb/chroma:latest</Repository>
+  <Registry>https://hub.docker.com/r/chromadb/chroma</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/odysseus-dev/odysseus/issues</Support>
+  <Project>https://www.trychroma.com/</Project>
+  <Overview>
+    ChromaDB vector database, the long-term-memory companion for Odysseus.
+
+    After installing, set on the Odysseus container:
+      CHROMADB_HOST = your Unraid server IP
+      CHROMADB_PORT = 8100 (or whatever host port you choose below)
+
+    No web UI — this is a backend service.
+  </Overview>
+  <Category>Tools: Backup:</Category>
+  <TemplateURL>https://raw.githubusercontent.com/odysseus-dev/odysseus/dev/unraid/odysseus-chromadb.xml</TemplateURL>
+  <Icon>https://www.trychroma.com/img/favicon.ico</Icon>
+  <ExtraParams/>
+  <Requires/>
+  <Config Name="API Port" Target="8000" Default="8100" Mode="tcp" Description="Host port for the ChromaDB API. Odysseus's CHROMADB_PORT must match." Type="Port" Display="always" Required="true" Mask="false">8100</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/odysseus/chromadb" Mode="rw" Description="Vector database storage (Odysseus long-term memory). Back this up. Note: Chroma 1.x images persist to /data (older images used /chroma/chroma)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/odysseus/chromadb</Config>
+  <Config Name="Disable Telemetry" Target="ANONYMIZED_TELEMETRY" Default="FALSE" Mode="" Description="Disables ChromaDB anonymous telemetry." Type="Variable" Display="advanced" Required="false" Mask="false">FALSE</Config>
+</Container>

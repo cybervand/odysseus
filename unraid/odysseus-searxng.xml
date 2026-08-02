@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Odysseus-SearXNG</Name>
+  <Repository>docker.io/searxng/searxng:2026.5.31-7159b8aed</Repository>
+  <Registry>https://hub.docker.com/r/searxng/searxng</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/odysseus-dev/odysseus/issues</Support>
+  <Project>https://github.com/searxng/searxng</Project>
+  <Overview>
+    SearXNG metasearch engine, pre-configured as the web-search companion for
+    Odysseus (Deep Research and web search tools).
+
+    IMPORTANT — one-time setup: Odysseus talks to SearXNG via its JSON API,
+    which is disabled by default. After the first start, edit
+    settings.yml in this container's appdata folder and make the search
+    formats section read:
+
+      search:
+        formats:
+          - html
+          - json
+
+    then restart this container. Alternatively copy the ready-made file from
+    the Odysseus repo (config/searxng/settings.yml) into the appdata folder
+    before first start and replace __SEARXNG_SECRET__ with any random string.
+
+    Finally set SEARXNG_INSTANCE on the Odysseus container to
+    http://SERVER_IP:8089 (adjust if you changed the port).
+
+    The image tag is pinned to a version known to boot cleanly with Odysseus;
+    bump it deliberately.
+  </Overview>
+  <Category>Tools: Network:Web</Category>
+  <WebUI>http://[IP]:[PORT:8089]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/odysseus-dev/odysseus/dev/unraid/odysseus-searxng.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/searxng/searxng/master/client/simple/src/brand/searxng-wordmark.svg</Icon>
+  <ExtraParams/>
+  <Requires/>
+  <Config Name="Web Port" Target="8080" Default="8089" Mode="tcp" Description="Host port for SearXNG. Odysseus's SEARXNG_INSTANCE must point at this port." Type="Port" Display="always" Required="true" Mask="false">8089</Config>
+  <Config Name="Config" Target="/etc/searxng" Default="/mnt/user/appdata/odysseus/searxng" Mode="rw" Description="SearXNG configuration. Edit settings.yml here to enable the JSON format (see Overview)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/odysseus/searxng</Config>
+  <Config Name="Base URL" Target="SEARXNG_BASE_URL" Default="http://localhost:8089/" Mode="" Description="Public base URL of this SearXNG instance, e.g. http://SERVER_IP:8089/." Type="Variable" Display="always" Required="false" Mask="false">http://localhost:8089/</Config>
+</Container>

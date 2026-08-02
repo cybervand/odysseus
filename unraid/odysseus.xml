@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Odysseus</Name>
+  <Repository>ghcr.io/odysseus-dev/odysseus:latest</Repository>
+  <Registry>https://github.com/odysseus-dev/odysseus/pkgs/container/odysseus</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/odysseus-dev/odysseus/issues</Support>
+  <Project>https://github.com/odysseus-dev/odysseus</Project>
+  <Overview>
+    Odysseus is a self-hosted AI workspace for chat, agents, research, documents,
+    email, notes, calendar, and local model workflows. Works with local models
+    (Ollama, llama.cpp, vLLM) and API providers.
+
+    First start: if you leave Admin Password blank, a random password is
+    generated and printed ONCE in this container's log (Docker tab, container
+    log icon). Set your own below to skip that.
+
+    Optional companions (separate containers, templates in the same repo):
+    SearXNG enables web search for Deep Research, ChromaDB enables long-term
+    memory, ntfy enables push notifications. Point the variables below at them
+    once installed, e.g. SEARXNG_INSTANCE=http://SERVER_IP:8089 and
+    CHROMADB_HOST=SERVER_IP with CHROMADB_PORT=8100.
+
+    Ollama on the same box is reachable at http://host.docker.internal:11434
+    (the template adds the required host mapping).
+  </Overview>
+  <Category>AI: Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:7000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/odysseus-dev/odysseus/dev/unraid/odysseus.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/odysseus-dev/odysseus/dev/static/icons/icon-512.png</Icon>
+  <ExtraParams>--add-host=host.docker.internal:host-gateway</ExtraParams>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="WebUI Port" Target="7000" Default="7000" Mode="tcp" Description="Port for the Odysseus web interface." Type="Port" Display="always" Required="true" Mask="false">7000</Config>
+  <Config Name="Data" Target="/app/data" Default="/mnt/user/appdata/odysseus/data" Mode="rw" Description="Application data: database, uploads, skills, preferences. Back this up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/odysseus/data</Config>
+  <Config Name="Logs" Target="/app/logs" Default="/mnt/user/appdata/odysseus/logs" Mode="rw" Description="Application logs." Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/odysseus/logs</Config>
+  <Config Name="SSH Keys" Target="/app/.ssh" Default="/mnt/user/appdata/odysseus/ssh" Mode="rw" Description="SSH identity used by the Cookbook to manage remote model servers. Odysseus can generate a key here; add its public key to each remote server's authorized_keys." Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/odysseus/ssh</Config>
+  <Config Name="HuggingFace Cache" Target="/app/.cache/huggingface" Default="/mnt/user/appdata/odysseus/huggingface" Mode="rw" Description="Model download cache for Cookbook local models. Can grow large — consider placing it on a share with space." Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/odysseus/huggingface</Config>
+  <Config Name="Local Python Packages" Target="/app/.local" Default="/mnt/user/appdata/odysseus/local" Mode="rw" Description="Cookbook-installed serve engines (vLLM, llama-cpp-python, ...). Persisted so a container update does not remove them." Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/odysseus/local</Config>
+  <Config Name="Admin Username" Target="ODYSSEUS_ADMIN_USER" Default="admin" Mode="" Description="Initial admin account username (used on first start only)." Type="Variable" Display="always" Required="false" Mask="false">admin</Config>
+  <Config Name="Admin Password" Target="ODYSSEUS_ADMIN_PASSWORD" Default="" Mode="" Description="Initial admin password (min 8 characters, first start only). Leave blank to auto-generate one — it is printed once in the container log." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Ollama / LLM Host" Target="LLM_HOST" Default="host.docker.internal" Mode="" Description="Host where your local model server (e.g. Ollama) runs. 'host.docker.internal' reaches the Unraid host itself; use an IP for another machine." Type="Variable" Display="always" Required="false" Mask="false">host.docker.internal</Config>
+  <Config Name="SearXNG Instance" Target="SEARXNG_INSTANCE" Default="" Mode="" Description="URL of a SearXNG instance with the JSON format enabled, e.g. http://SERVER_IP:8089. Required for web search / Deep Research. Install the Odysseus-SearXNG companion template or reuse an existing instance." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="ChromaDB Host" Target="CHROMADB_HOST" Default="" Mode="" Description="Host/IP of a ChromaDB server, e.g. your Unraid server IP. Required for long-term memory. Install the Odysseus-ChromaDB companion template." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="ChromaDB Port" Target="CHROMADB_PORT" Default="8100" Mode="" Description="Port of the ChromaDB server (the companion template maps it to 8100)." Type="Variable" Display="always" Required="false" Mask="false">8100</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User id the app runs as. 99 = 'nobody', the Unraid standard, so files in appdata stay editable." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group id the app runs as. 100 = 'users', the Unraid standard." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="OpenAI API Key" Target="OPENAI_API_KEY" Default="" Mode="" Description="Optional API key for OpenAI-compatible providers. All keys can also be configured later in the web UI." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="HuggingFace Token" Target="HF_TOKEN" Default="" Mode="" Description="Optional HuggingFace token for gated model downloads in the Cookbook." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Auth Enabled" Target="AUTH_ENABLED" Default="true" Mode="" Description="Keep 'true' unless Odysseus is only reachable from a fully trusted network." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Allowed Origins" Target="ALLOWED_ORIGINS" Default="http://localhost,http://127.0.0.1" Mode="" Description="Comma-separated CORS origins. Only needed if a separate frontend or reverse-proxied origin calls the API cross-origin; the built-in web UI is same-origin and needs no change." Type="Variable" Display="advanced" Required="false" Mask="false">http://localhost,http://127.0.0.1</Config>
+  <Config Name="Secure Cookies" Target="SECURE_COOKIES" Default="false" Mode="" Description="Set to 'true' when serving Odysseus over HTTPS (e.g. behind a reverse proxy with TLS)." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+</Container>
