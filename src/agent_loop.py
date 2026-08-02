@@ -2705,9 +2705,16 @@ def _resolve_tool_blocks(
     is_api_model: bool = False,
     allow_fenced_for_api: bool = False,
 ):
-    """Choose native function calls or fenced code block parsing. Returns (tool_blocks, used_native)."""
+    """Choose native function calls or fenced code block parsing.
+
+    Returns (tool_blocks, used_native, converted_calls, failed_calls) where
+    failed_calls describes native calls that could not be converted (unknown
+    tool name or unusable arguments) so the caller can feed the error back to
+    the model instead of silently dropping the attempted action.
+    """
     used_native = False
     converted_calls = []  # native calls that converted, ALIGNED with tool_blocks
+    failed_calls = []     # native calls that did NOT convert
     if native_tool_calls:
         tool_blocks = []
         for tc in native_tool_calls:
@@ -2720,6 +2727,15 @@ def _resolve_tool_blocks(
                 logger.info(f"  -> converted: {tc_name} -> {block.tool_type}")
             else:
                 logger.warning(f"  -> FAILED to convert native call: {tc_name} args={tc_args[:200]}")
+                _known = bool(
+                    tc_name in TOOL_TAGS
+                    or tc_name.startswith("mcp__")
+                )
+                failed_calls.append({
+                    "name": tc_name,
+                    "args": (tc_args if isinstance(tc_args, str) else json.dumps(tc_args))[:200],
+                    "known": _known,
+                })
         if tool_blocks:
             used_native = True
     if not used_native:
@@ -2746,7 +2762,7 @@ def _resolve_tool_blocks(
                 f"{len(native_tool_calls)} native calls, "
                 f"{len(tool_blocks)} tool blocks. Preview: {resp_preview}")
 
-    return tool_blocks, used_native, converted_calls
+    return tool_blocks, used_native, converted_calls, failed_calls
 
 
 def _append_tool_results(
@@ -2943,6 +2959,35 @@ def _build_actions_snapshot(tool_events: list, limit: int = 8000) -> str:
     return snap[:limit] if len(snap) > limit else snap
 
 
+def _parse_verifier_response(raw: str) -> list:
+    """Derive the verifier's verdict from its per-requirement lines.
+
+    Small local judges enumerate evidence well but botch the final boolean:
+    observed live was an all-MET requirement list followed by
+    'VERIFICATION: FAIL: ... results.json updated correctly' — observations
+    dumped into the failure slot, sending the agent off to "fix" completed
+    work. So: any requirement line asserting UNMET is a failure; an
+    enumeration with no UNMET lines is a pass regardless of the verdict
+    line; the verdict line is trusted only when the judge produced no
+    per-requirement enumeration at all.
+    """
+    lines = [l.strip() for l in (raw or "").splitlines() if l.strip()]
+    req_lines = [l for l in lines if "VERIFICATION:" not in l]
+    unmet = [l[:200] for l in req_lines if "UNMET" in l.upper()]
+    if unmet:
+        return unmet[:6]
+    if any(re.search(r"\bMET\b", l, re.IGNORECASE) for l in req_lines):
+        return []
+    last_v = None
+    for line in lines:
+        if "VERIFICATION:" in line:
+            last_v = line
+    if not last_v or "VERIFICATION: FAIL:" not in last_v:
+        return []
+    reasons = last_v.split("VERIFICATION: FAIL:", 1)[1].strip()
+    return [r.strip() for r in reasons.split(";") if r.strip()]
+
+
 async def _run_verifier_subagent(
     instruction: str, actions_snapshot: str,
     *, endpoint_url: str, model: str, headers: dict,
@@ -2962,35 +3007,39 @@ async def _run_verifier_subagent(
         "only say SUCCESS if the work genuinely satisfies the request.\n\n"
         f"<user_request>\n{(instruction or '')[:4000]}\n</user_request>\n\n"
         f"<actions_taken>\n{actions_snapshot[:8000]}\n</actions_taken>\n\n"
-        "<checklist>\n"
-        "1. Every concrete deliverable the request asked for was actually produced\n"
-        "2. Outputs/edits match what was asked — nothing missing, no extra or unrequested changes\n"
-        "3. Tool results show success, not errors or empty output that got ignored\n"
-        "4. Anything the request said to leave alone was left unchanged\n"
-        "</checklist>\n\n"
-        "Reason briefly (2-3 sentences max). Then output EXACTLY one of:\n"
-        "  VERIFICATION: SUCCESS\n"
-        "  VERIFICATION: FAIL: <one short sentence per issue, semicolon-separated>\n"
+        "Work through this strictly, requirement by requirement:\n"
+        "1. Extract every explicit requirement from the request — each numbered "
+        "step, each named file or path, and each 'show/state/write/record' "
+        "instruction counts as its own requirement.\n"
+        "2. For each one, find the specific action in the record that fulfilled "
+        "it. A requirement with no matching action is UNMET — plausible-sounding "
+        "work on OTHER requirements is not evidence for this one. If an action "
+        "plausibly fulfilled it (e.g. a file written to the required path), "
+        "count it MET even though you cannot see the file's full content.\n"
+        "3. A tool error or empty output that was never addressed afterwards is "
+        "a failure.\n\n"
+        "Output one line per requirement: MET or UNMET plus five words of why. "
+        "Then output EXACTLY one of:\n"
+        "  VERIFICATION: SUCCESS   (only if EVERY requirement is MET)\n"
+        "  VERIFICATION: FAIL: <one short sentence per UNMET or failed item, semicolon-separated>\n"
         "Output nothing after the VERIFICATION line."
     )
     try:
         raw = await llm_call_async(
             url=endpoint_url, model=model,
             messages=[{"role": "user", "content": prompt}],
-            headers=headers, temperature=0.0, max_tokens=600, timeout=60,
+            headers=headers, temperature=0.0, max_tokens=900, timeout=60,
         )
     except Exception as e:
         logger.warning(f"[agent] verifier subagent failed: {e}")
         return []
     raw = _strip_think_blocks(raw or "")
-    last_v = None
-    for line in raw.splitlines():
-        if "VERIFICATION:" in line:
-            last_v = line.strip()
-    if not last_v or "VERIFICATION: FAIL:" not in last_v:
-        return []
-    reasons = last_v.split("VERIFICATION: FAIL:", 1)[1].strip()
-    return [r.strip() for r in reasons.split(";") if r.strip()]
+    # Log the verdict AND its reasoning on every run — a silent pass is
+    # indistinguishable from a verifier that never engaged (or whose output
+    # failed to parse and fell through the fail-open default), which makes
+    # the feature impossible to trust or debug from the logs.
+    logger.info(f"[agent] verifier response: {raw[:600].replace(chr(10), ' | ')}")
+    return _parse_verifier_response(raw)
 
 
 def _empty_response_fallback(
@@ -3818,6 +3867,20 @@ async def stream_agent_loop(
     _effectful_used = False
     _verifier_rounds = 0
     _verifier_instruction = _extract_last_user_message(messages)
+    # Bad-tool-call feedback state. A native call that fails to convert
+    # (hallucinated tool name, unusable arguments) means the model TRIED to
+    # act — ending the turn there strands the run mid-task. Feed the error
+    # back so the model can re-issue with a real tool. The cap counts
+    # CONSECUTIVE failed rounds (any successful tool round resets it): a
+    # long productive run may absorb occasional bad calls indefinitely,
+    # while a model stuck hallucinating tool names still terminates.
+    _bad_tool_feedback_rounds = 0
+    # Verifier-fix accountability: set when verifier findings are injected,
+    # cleared when any tool actually runs. A fail answered with prose alone
+    # (observed live: a flagged missing file answered by re-claiming success
+    # in a restated report) gets one push-back before the ending is accepted.
+    _verifier_fix_pending = False
+    _verifier_nofix_nudged = False
     real_input_tokens = 0   # Accumulated real usage from API
     real_output_tokens = 0
     last_round_input_tokens = 0  # Last round's input tokens (for context % peak)
@@ -4200,7 +4263,7 @@ async def stream_agent_loop(
             if _ody_doc_finetune_mode
             else round_response
         )
-        tool_blocks, used_native, converted_calls = _resolve_tool_blocks(
+        tool_blocks, used_native, converted_calls, failed_native_calls = _resolve_tool_blocks(
             _normalized_doc_round,
             native_tool_calls,
             round_num,
@@ -4372,7 +4435,74 @@ async def stream_agent_loop(
         if _ody_qwen_finetune_model and not tool_blocks and cleaned_round:
             yield f'data: {json.dumps({"delta": cleaned_round})}\n\n'
 
+        # ── Bad-tool-call feedback ────────────────────────────────────
+        # Every native call this round failed to convert (hallucinated tool
+        # name like `cat`, or unusable arguments). Without feedback the loop
+        # below treats "no tool blocks" as "model is finishing" and ends the
+        # turn — stranding the run mid-task on what was an attempted action.
+        # Tell the model exactly what didn't execute and why, then give it
+        # another round. The cap is on CONSECUTIVE failed rounds — a round
+        # that executes real tools resets it below — so occasional slips in
+        # a long run don't exhaust the budget but a stuck model still stops.
+        if tool_blocks:
+            _bad_tool_feedback_rounds = 0
+            _verifier_fix_pending = False
+        if failed_native_calls and not tool_blocks and not _force_answer \
+                and _bad_tool_feedback_rounds < 3:
+            _bad_tool_feedback_rounds += 1
+            _fail_lines = []
+            for _fc in failed_native_calls:
+                if _fc["known"]:
+                    _fail_lines.append(
+                        f"- `{_fc['name']}`: invalid or missing arguments (got: {_fc['args'] or '{}'})"
+                    )
+                else:
+                    _fail_lines.append(f"- `{_fc['name']}`: this tool does not exist")
+            _valid_tools = ", ".join(_tool_names_sent[:15]) if _tool_names_sent else (
+                "bash, python, read_file, write_file, edit_file, grep, glob, ls"
+            )
+            logger.info(
+                f"[agent] round {round_num}: {len(failed_native_calls)} unconvertible "
+                f"tool call(s), feeding error back (retry {_bad_tool_feedback_rounds}/3)"
+            )
+            if cleaned_round:
+                messages.append({"role": "assistant", "content": cleaned_round})
+            messages.append({
+                "role": "system",
+                "content": (
+                    "Your last tool call did not execute:\n" + "\n".join(_fail_lines) +
+                    f"\n\nAvailable tools: {_valid_tools}. "
+                    "Re-issue the action with a valid tool and correct arguments — "
+                    "for shell commands such as reading a file, use the `bash` tool "
+                    "(e.g. `cat <path>`). Then continue the task."
+                ),
+            })
+            yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+            continue
+
         if not tool_blocks:
+            # ── Verifier-fix accountability ───────────────────────────
+            # The model answered the verifier's findings with prose only —
+            # no tool ran since the failure was injected. Push back once:
+            # demand real fixes or an explicit can't-fix statement, so a
+            # flagged issue can't be closed by restating the report.
+            if _verifier_fix_pending and not _verifier_nofix_nudged and not _force_answer:
+                _verifier_nofix_nudged = True
+                logger.info(f"[agent] round {round_num}: verifier fixes pending but no tools used — pushing back")
+                if cleaned_round:
+                    messages.append({"role": "assistant", "content": cleaned_round})
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "You made no fixes — no tools have run since the verifier's "
+                        "findings. Either fix the flagged items NOW using tools, or "
+                        "state explicitly which items cannot be fixed and why. Reply "
+                        "with a short note only; do not restate your full report."
+                    ),
+                })
+                yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+                continue
+
             # ── Completion verifier (mechanism 3a) ────────────────────
             # The model is finishing. If this was an effectful agentic turn,
             # have a fresh-context verifier independently check the work
@@ -4399,22 +4529,52 @@ async def stream_agent_loop(
                 if _vfail:
                     _verifier_rounds += 1
                     logger.info(f"[agent] verifier flagged {len(_vfail)} issue(s) on round {round_num}: {_vfail}")
-                    _note = "\n\n_Double-checked the work and found something to fix._\n\n"
+                    # Plain text, not _markdown italics_ — the chat renderer
+                    # shows the underscores literally. And show the flagged
+                    # items right here: the user otherwise never sees WHAT was
+                    # sent back, only that something was.
+                    # *asterisk* emphasis — the only form the chat renderer
+                    # supports (underscore emphasis renders literally).
+                    _note = (
+                        "\n\n*Double-checked the work — sent back to fix:*\n"
+                        + "".join(f"- {i}\n" for i in _vfail[:6]) + "\n"
+                    )
                     yield f'data: {json.dumps({"delta": _note})}\n\n'
                     full_response += _note
+                    _verifier_fix_pending = True
                     messages.append({
                         "role": "system",
                         "content": (
                             "An independent verifier reviewed your work against the "
-                            "original request and found issues that must be fixed before "
-                            "this is actually done:\n- " + "\n- ".join(_vfail) +
-                            "\n\nFix these now using tools, then finish."
+                            "original request and flagged:\n- " + "\n- ".join(_vfail) +
+                            "\n\nFix these now using tools. If an item genuinely cannot "
+                            "be fixed on this system (e.g. missing system software), say "
+                            "so explicitly in one line instead of fixing it. Then close "
+                            "with a SHORT completion note — 2-3 sentences on what "
+                            "changed. Do NOT restate your full report; it is already "
+                            "visible above."
                         ),
                     })
                     # Require fresh effectful work before verifying again, so we
                     # never re-verify an unchanged state in a loop.
                     _effectful_used = False
                     continue
+                else:
+                    # A silent pass is indistinguishable from the verifier
+                    # never running — surface it so users can tell the work
+                    # was independently checked (and so a fail-open shrug
+                    # doesn't masquerade as a clean bill of health forever
+                    # going unnoticed; the log line above holds the detail).
+                    # *asterisk* emphasis — the only form the chat renderer
+                    # supports (underscore emphasis renders literally).
+                    if _verifier_rounds:
+                        _r = "round" if _verifier_rounds == 1 else "rounds"
+                        _note = (f"\n\n*Double-checked the work — verified complete "
+                                 f"after {_verifier_rounds} fix {_r}.*\n\n")
+                    else:
+                        _note = "\n\n*Double-checked the work — verified complete.*\n\n"
+                    yield f'data: {json.dumps({"delta": _note})}\n\n'
+                    full_response += _note
             # ── Intent-without-action supervisor ─────────────────────
             # Catch "Let me tail the output" / "I'll check the logs" /
             # "Let me investigate" patterns where the model announces an
