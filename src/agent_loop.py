@@ -1055,6 +1055,54 @@ def _uploaded_files_context_message(uploaded_files: Optional[List[Dict]]) -> Opt
     return untrusted_context_message("current chat uploaded files", "\n".join(lines))
 
 
+def _session_documents(session_id: str) -> List[Dict]:
+    """Titles/ids of this session's documents, newest first. No content."""
+    from core.database import Document, SessionLocal
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(Document.id, Document.title, Document.language, Document.updated_at)
+            .filter(Document.session_id == session_id, Document.archived == False)  # noqa: E712
+            .order_by(Document.updated_at.desc())
+            .limit(8)
+            .all()
+        )
+    finally:
+        db.close()
+    return [
+        {"id": r[0], "title": r[1], "language": r[2], "updated_at": r[3]}
+        for r in rows
+    ]
+
+
+def _session_library_context_message(docs: List[Dict]) -> Optional[Dict]:
+    """Manifest of documents that live in this session's library.
+
+    The agent's own artifacts are DB rows, invisible to every file tool;
+    history trimming drops the turns that created them; and the document
+    tools are keyword-gated. Net effect without this note: the agent writes
+    a document, then one turn later truthfully denies it can access it.
+    Titles only — content stays behind manage_documents so the note costs
+    a few dozen tokens instead of the documents themselves.
+    """
+    if not docs:
+        return None
+    lines = ["Documents in this session's library (created or edited in earlier turns, possibly by you):"]
+    for d in docs:
+        bits = [f"id={d.get('id', '')}", f"title={d.get('title') or 'Untitled'}"]
+        if d.get("language"):
+            bits.append(f"language={d.get('language')}")
+        if d.get("updated_at"):
+            bits.append(f"updated={str(d.get('updated_at'))[:16]}")
+        lines.append("- " + "; ".join(bits))
+    lines.extend([
+        "",
+        'Read one with manage_documents (action="read", document_id=...); list all with action="list". '
+        "Do not claim these are lost or inaccessible — they are one tool call away.",
+    ])
+    return untrusted_context_message("session document library", "\n".join(lines))
+
+
 _WORKSPACE_CODE_ACTION_RE = re.compile(
     r"\b(?:fix|debug|implement|add|remove|change|update|refactor|wire|hook|"
     r"test|verify|run|build|lint|compile|commit|branch|merge|review|"
@@ -3231,6 +3279,17 @@ async def stream_agent_loop(
     if _upload_msg:
         messages = _insert_before_latest_user(messages, _upload_msg)
 
+    _session_docs: List[Dict] = []
+    if session_id:
+        try:
+            _session_docs = _session_documents(session_id)
+        except Exception as e:
+            logger.debug(f"[agent] session library lookup failed: {e}")
+    _library_msg = _session_library_context_message(_session_docs)
+    if _library_msg:
+        messages = _insert_before_latest_user(messages, _library_msg)
+        logger.info(f"[agent] session library manifest injected: {len(_session_docs)} document(s)")
+
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
     _last_user = _extract_last_user_message(messages)
@@ -3551,6 +3610,16 @@ async def stream_agent_loop(
             from src.tool_index import ALWAYS_AVAILABLE
             _relevant_tools = set(ALWAYS_AVAILABLE)
         _relevant_tools.update({"read_file", "grep", "ls", "manage_documents"})
+
+    # Same principle for the session's own document library: artifacts the
+    # agent created must stay reachable without keyword roulette. The library
+    # manifest above tells the model they exist; this makes the tools that
+    # can read/edit them actually available.
+    if not guide_only and _session_docs:
+        if _relevant_tools is None:
+            from src.tool_index import ALWAYS_AVAILABLE
+            _relevant_tools = set(ALWAYS_AVAILABLE)
+        _relevant_tools.update({"manage_documents", "edit_document"})
 
     # Per-request forced tools are stronger than retrieval. Explicit search
     # settings make web tools visible even when tool RAG misses them;
