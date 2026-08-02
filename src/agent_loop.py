@@ -4458,8 +4458,14 @@ async def stream_agent_loop(
                     )
                 else:
                     _fail_lines.append(f"- `{_fc['name']}`: this tool does not exist")
-            _valid_tools = ", ".join(_tool_names_sent[:15]) if _tool_names_sent else (
-                "bash, python, read_file, write_file, edit_file, grep, glob, ls"
+            # Only name alternatives that were actually offered this round.
+            # Under upstream's no-tool clamp modes _tool_names_sent is empty
+            # and recommending the hardcoded core set would point the model
+            # at tools that are globally disabled for this turn.
+            _valid_tools = ", ".join(_tool_names_sent[:15]) if _tool_names_sent else ""
+            _tools_line = (
+                f"\n\nAvailable tools: {_valid_tools}. " if _valid_tools
+                else "\n\nNo tools are available this round — reply in text instead. "
             )
             logger.info(
                 f"[agent] round {round_num}: {len(failed_native_calls)} unconvertible "
@@ -4467,14 +4473,17 @@ async def stream_agent_loop(
             )
             if cleaned_round:
                 messages.append({"role": "assistant", "content": cleaned_round})
+            _retry_hint = (
+                "Re-issue the action with a valid tool and correct arguments — "
+                "for shell commands such as reading a file, use the `bash` tool "
+                "(e.g. `cat <path>`). Then continue the task."
+                if _valid_tools else "Then continue the task in text."
+            )
             messages.append({
                 "role": "system",
                 "content": (
                     "Your last tool call did not execute:\n" + "\n".join(_fail_lines) +
-                    f"\n\nAvailable tools: {_valid_tools}. "
-                    "Re-issue the action with a valid tool and correct arguments — "
-                    "for shell commands such as reading a file, use the `bash` tool "
-                    "(e.g. `cat <path>`). Then continue the task."
+                    _tools_line + _retry_hint
                 ),
             })
             yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
