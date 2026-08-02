@@ -3042,6 +3042,23 @@ async def _run_verifier_subagent(
     return _parse_verifier_response(raw)
 
 
+def _is_reasoning_only_round(
+    round_reasoning: str,
+    visible_round_text: str,
+    has_tool_blocks: bool,
+) -> bool:
+    """True when a round produced ONLY reasoning — thinking-channel tokens but
+    no tool call and no visible answer text.
+
+    This is the reasoning-model stall (gpt-oss/harmony via Ollama closes the
+    turn after its analysis channel). The caller nudges instead of accepting
+    it as a finished turn. Pure so the decision is unit-testable.
+    """
+    if has_tool_blocks:
+        return False
+    return bool(round_reasoning.strip()) and not visible_round_text.strip()
+
+
 def _empty_response_fallback(
     full_response: str,
     round_reasoning: str,
@@ -3881,6 +3898,13 @@ async def stream_agent_loop(
     # in a restated report) gets one push-back before the ending is accepted.
     _verifier_fix_pending = False
     _verifier_nofix_nudged = False
+    # Reasoning-only stall guard. Some reasoning models (notably gpt-oss via
+    # Ollama's harmony format) intermittently close a round after emitting
+    # ONLY their analysis/thinking channel — no content, no tool call — which
+    # the loop below reads as "finished" and ends the turn silently. Nudge
+    # once to make the model actually act or answer. Capped so a model that
+    # only ever thinks still terminates.
+    _reasoning_only_nudges = 0
     real_input_tokens = 0   # Accumulated real usage from API
     real_output_tokens = 0
     last_round_input_tokens = 0  # Last round's input tokens (for context % peak)
@@ -4447,6 +4471,7 @@ async def stream_agent_loop(
         if tool_blocks:
             _bad_tool_feedback_rounds = 0
             _verifier_fix_pending = False
+            _reasoning_only_nudges = 0  # consecutive cap: a real tool round resets it
         if failed_native_calls and not tool_blocks and not _force_answer \
                 and _bad_tool_feedback_rounds < 3:
             _bad_tool_feedback_rounds += 1
@@ -4490,6 +4515,37 @@ async def stream_agent_loop(
             continue
 
         if not tool_blocks:
+            # ── Reasoning-only stall guard ────────────────────────────
+            # The round produced ONLY reasoning: the thinking channel had
+            # tokens but no content and no tool call landed. That is not a
+            # finished turn — the model stalled in its analysis channel
+            # (seen with gpt-oss/harmony via Ollama). Nudge once to make it
+            # act or answer, rather than ending the turn on empty output.
+            # Guarded to real reasoning-only rounds (reasoning present, no
+            # visible text) and skipped on force-answer (which already has
+            # its own grace-synthesis path below).
+            _visible_round_text = _strip_think_blocks(cleaned_round).strip()
+            if (_is_reasoning_only_round(round_reasoning, _visible_round_text, bool(tool_blocks))
+                    and not _force_answer
+                    and _reasoning_only_nudges < 2):
+                _reasoning_only_nudges += 1
+                logger.info(
+                    f"[agent] round {round_num}: reasoning-only round "
+                    f"(no content, no tool call) — nudging (retry {_reasoning_only_nudges}/2)"
+                )
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "You emitted only internal reasoning and then stopped — "
+                        "no tool call ran and no answer was given. Do not stop "
+                        "here. If the task needs an action, make the tool call "
+                        "now. If you already have what you need, write the final "
+                        "answer now."
+                    ),
+                })
+                yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+                continue
+
             # ── Verifier-fix accountability ───────────────────────────
             # The model answered the verifier's findings with prose only —
             # no tool ran since the failure was injected. Push back once:
