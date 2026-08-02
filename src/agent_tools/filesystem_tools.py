@@ -180,6 +180,34 @@ class ReadFileTool:
             data = data[:MAX_READ_CHARS] + f"\n... [truncated at {MAX_READ_CHARS} chars]"
         return {"output": data, "exit_code": 0}
 
+def _unblock_dir_path(d: str) -> None:
+    """Clear a zero-byte file squatting on a needed directory path.
+
+    Small models call write_file on the directory itself ("write_file
+    /app/data/haikus"), creating an empty FILE — after which every write
+    into that "directory" fails with FileExistsError, which they misread
+    as a permissions problem and abandon the task. An empty file occupying
+    a needed directory name carries no data, so replace it; a file WITH
+    content is never touched — fail with an error that names the problem.
+    """
+    cur = d
+    while cur:
+        if os.path.isfile(cur):
+            if os.path.getsize(cur) == 0:
+                os.remove(cur)
+            else:
+                raise OSError(
+                    f"{cur} already exists as a FILE with content, but this "
+                    f"write needs it to be a directory — delete or rename "
+                    f"that file first"
+                )
+            break
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+
+
 class WriteFileTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import _resolve_tool_path, _resolve_search_root, _truncate
@@ -215,6 +243,7 @@ class WriteFileTool:
                     old = ""
                 d = os.path.dirname(path)
                 if d:
+                    _unblock_dir_path(d)
                     os.makedirs(d, exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(body)
