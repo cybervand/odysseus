@@ -134,6 +134,22 @@ _XML_DIRECT_OPEN_RE = re.compile(r"<\s*([A-Za-z_][\w-]*)\s*>", re.IGNORECASE)
 # parameter openers can't drive finditer's O(n^2) rescan. See _iter_named_blocks.
 _XML_PARAM_OPEN_RE = re.compile(r'<parameter\s+name=["\'](\w+)["\']>', re.IGNORECASE)
 _XML_PARAM_CLOSE_RE = re.compile(r'</parameter>', re.IGNORECASE)
+# Pattern 3c: Qwen3-Coder's XML tool-call dialect. Its chat template formats
+# calls as
+#   <function=manage_documents>
+#   <parameter=action>
+#   list
+#   </parameter>
+#   </function>
+# and this leaks into content as text whenever the serving layer fails to
+# parse it into structured tool_calls (observed live from qwen3-coder:30b via
+# Ollama's /v1 endpoint). Note `=name` instead of `name="..."`, so the
+# <invoke>/<parameter name=..> patterns above never match it. Forward-only
+# scan discipline as with the other XML shapes.
+_QWEN_FUNC_OPEN_RE = re.compile(r'<function=["\']?([\w.-]+)["\']?>\s*', re.IGNORECASE)
+_QWEN_FUNC_CLOSE_RE = re.compile(r'</function>', re.IGNORECASE)
+_QWEN_PARAM_OPEN_RE = re.compile(r'<parameter=["\']?([\w.-]+)["\']?>\s*', re.IGNORECASE)
+_QWEN_PARAM_CLOSE_RE = re.compile(r'</parameter>', re.IGNORECASE)
 # Closer tokens (any tag name) for the backref scanners, pre-indexed by name so a
 # flood of distinct unclosed tag names stays near-linear. See _iter_backref_blocks.
 _XML_DIRECT_CLOSE_ANY_RE = re.compile(r"</\s*([A-Za-z_][\w-]*)\s*>", re.IGNORECASE)
@@ -885,6 +901,26 @@ def _parse_xml_invoke(name, body) -> Optional[ToolBlock]:
     return function_call_to_tool_block(tool_name, json.dumps(params))
 
 
+def _parse_qwen_function(name, body) -> Optional[ToolBlock]:
+    """Parse Qwen3-Coder's ``<function=tool><parameter=key>value</parameter>`` call.
+
+    Same one-place delegation as _parse_xml_invoke: parameters go through
+    function_call_to_tool_block so tool aliases, per-tool content shaping,
+    and unknown-name rejection stay centralized.
+    """
+    params = {}
+    for pname, pval in _iter_named_blocks(body, _QWEN_PARAM_OPEN_RE, _QWEN_PARAM_CLOSE_RE):
+        params[pname] = pval.strip()
+    # Local import to avoid a circular import at module load.
+    from src.tool_schemas import function_call_to_tool_block
+    return function_call_to_tool_block(name.lower(), json.dumps(params))
+
+
+def _iter_qwen_function(text):
+    """Forward-only ``<function=..>...</function>`` scan (see _iter_named_blocks)."""
+    return _iter_named_blocks(text, _QWEN_FUNC_OPEN_RE, _QWEN_FUNC_CLOSE_RE)
+
+
 def _parse_xml_direct_tool(name, body) -> Optional[ToolBlock]:
     """Parse direct XML tool tags inside <tool_call>.
 
@@ -1361,6 +1397,15 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
                 if block:
                     blocks.append(block)
 
+    # Pattern 3c: Qwen3-Coder <function=...> dialect leaking into content.
+    # Like the other explicit markup shapes, never illustrative — parse and
+    # execute regardless of skip_fenced.
+    if not blocks:
+        for fn_name, fn_body in _iter_qwen_function(text):
+            block = _parse_qwen_function(fn_name, fn_body)
+            if block:
+                blocks.append(block)
+
     # Pattern 4: <tool_code> blocks (MiniMax-M2.5 style)
     if not blocks:
         for _ms, inner_start, inner_end, _me in _iter_delimited(
@@ -1442,6 +1487,7 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     cleaned = _strip_delimited(cleaned, _TOOL_CODE_OPEN_RE, _TOOL_CODE_CLOSE_RE)
     cleaned = _GEMMA_TOOL_CALL_RE.sub('', cleaned)
     cleaned = _strip_delimited(cleaned, _FUNCTION_MODEL_OPEN_RE, _FUNCTION_MODEL_CLOSE_RE)
+    cleaned = _strip_delimited(cleaned, _QWEN_FUNC_OPEN_RE, _QWEN_FUNC_CLOSE_RE)
     cleaned = _strip_raw_openai_tool_call_json(cleaned)
     cleaned = _QWEN_ROLE_MARKER_RE.sub('', cleaned)
     cleaned = _QWEN_BARE_MARKER_RE.sub(' ', cleaned)
