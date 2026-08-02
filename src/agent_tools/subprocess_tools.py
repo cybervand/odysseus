@@ -334,7 +334,9 @@ class PythonTool:
         progress_cb = ctx.get("progress_cb")
         _subproc_env = ctx.get("subproc_env")
         proc = await asyncio.create_subprocess_exec(
-            (sys.executable or "python"), "-I", "-c", content,
+            # No -I: isolated mode hides pip's user-site installs, so agent
+            # code could `pip install` via bash yet never import the result.
+            (sys.executable or "python"), "-c", content,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_subproc_env,

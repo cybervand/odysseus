@@ -3034,16 +3034,30 @@ async def _run_verifier_subagent(
         "  VERIFICATION: FAIL: <one short sentence per UNMET or failed item, semicolon-separated>\n"
         "Output nothing after the VERIFICATION line."
     )
-    try:
-        raw = await llm_call_async(
-            url=endpoint_url, model=model,
-            messages=[{"role": "user", "content": prompt}],
-            headers=headers, temperature=0.0, max_tokens=900, timeout=60,
+    raw = ""
+    # Reasoning models can spend a small budget entirely in their thinking
+    # channel and return empty content, which the fail-open default would
+    # silently accept as a pass. Retry once with a bigger budget (which also
+    # bypasses llm_call_async's response cache) before giving up.
+    for attempt_tokens in (900, 1600):
+        try:
+            raw = await llm_call_async(
+                url=endpoint_url, model=model,
+                messages=[{"role": "user", "content": prompt}],
+                headers=headers, temperature=0.0,
+                max_tokens=attempt_tokens, timeout=60,
+            )
+        except Exception as e:
+            logger.warning(f"[agent] verifier subagent failed: {e}")
+            return []
+        raw = _strip_think_blocks(raw or "")
+        if raw.strip():
+            break
+    if not raw.strip():
+        logger.warning(
+            "[agent] verifier returned empty responses at 900 and 1600 tokens "
+            "(reasoning budget exhaustion?) — failing open, done-claim NOT verified"
         )
-    except Exception as e:
-        logger.warning(f"[agent] verifier subagent failed: {e}")
-        return []
-    raw = _strip_think_blocks(raw or "")
     # Log the verdict AND its reasoning on every run — a silent pass is
     # indistinguishable from a verifier that never engaged (or whose output
     # failed to parse and fell through the fail-open default), which makes

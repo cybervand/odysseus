@@ -2128,6 +2128,13 @@ async def llm_call_async(
         # Suppress thinking for qwen3/gemma4 on Ollama /v1 — same as stream_llm.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
+        # gpt-oss at default effort can burn a small non-streaming budget
+        # (verifier, auto-title, memory extraction) entirely inside its
+        # reasoning channel and return empty content. Same mitigation as
+        # stream_llm; never send think:false — harmony models were not
+        # trained to run without reasoning.
+        if _is_ollama_openai_compat_url(url) and "gpt-oss" in (model or "").lower():
+            payload.setdefault("reasoning_effort", "low")
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         _apply_local_cache_affinity(payload, url, session_id)
