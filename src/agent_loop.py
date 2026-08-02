@@ -952,7 +952,17 @@ def _endpoint_lookup_keys(endpoint_url: str) -> List[str]:
     add(raw)
     try:
         from src.endpoint_resolver import normalize_base
-        add(normalize_base(raw))
+        norm = normalize_base(raw)
+        add(norm)
+        # Native Ollama runtime URLs ("http://host:11434/api/chat") normalize
+        # to ".../api" — normalize_base strips only the "/chat" — but users
+        # register the endpoint as the bare host ("http://host:11434").
+        # Without the api-stripped variant, the supports_tools lookup can
+        # never match a native endpoint's own row, so the per-endpoint
+        # tools toggle silently does nothing for native Ollama.
+        _trimmed = norm.rstrip("/")
+        if _trimmed.endswith("/api"):
+            add(_trimmed[: -len("/api")])
     except Exception:
         pass
     return keys
