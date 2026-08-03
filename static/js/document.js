@@ -4611,10 +4611,16 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   function _detachDocFromSession(docId, { toast = false } = {}) {
     const doc = docs.get(docId);
     const hasContent = doc && doc.content && doc.content.trim().length > 0;
+    // Server-side close (DELETE = is_active:=false) ONLY for a true scratch
+    // doc: no content AND no title — same rule as the tab-switch cleanup.
+    // An empty map entry can also mean "content never loaded" (UI crash,
+    // interrupted restore); closing a real titled document on that evidence
+    // silently dropped it from its session.
+    const isScratch = !hasContent && !((doc && doc.title) || '').trim();
     if (hasContent) {
       saveDocument({ silent: true }).catch(() => {});
       if (toast && uiModule) uiModule.showToast('Document closed');
-    } else {
+    } else if (isScratch) {
       fetch(`${API_BASE}/api/document/${docId}`, { method: 'DELETE' }).catch(() => {});
     }
     docs.delete(docId);
