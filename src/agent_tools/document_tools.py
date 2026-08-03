@@ -247,6 +247,17 @@ def extract_edit_target(content: str) -> tuple:
     return None, content
 
 
+def _doc_diff(old: str, new: str, title: str):
+    """Unified diff + counts in the same shape file tools emit, so the chat
+    renderer's existing +N/-M chip and colored-diff rendering apply to
+    document edits too — and the completion verifier can see what changed."""
+    from src.agent_tools.filesystem_tools import _unified_diff
+    try:
+        return _unified_diff(old or "", new or "", title or "document")
+    except Exception:
+        return None
+
+
 def _apply_edits(text: str, edits: list) -> tuple:
     """Apply FIND/REPLACE edits to text. Returns (updated, applied, skipped)."""
     applied = 0
@@ -472,7 +483,7 @@ class CreateDocumentTool:
             except Exception:
                 logger.debug("document_created event dispatch failed", exc_info=True)
 
-            return {
+            result = {
                 "action": "create",
                 "doc_id": doc_id,
                 "title": title,
@@ -480,6 +491,10 @@ class CreateDocumentTool:
                 "content": content,
                 "version": 1,
             }
+            diff = _doc_diff("", content, title)
+            if diff:
+                result["diff"] = diff
+            return result
         except Exception as e:
             db.rollback()
             return {"error": f"Failed to create document: {e}"}
@@ -539,12 +554,13 @@ class UpdateDocumentTool:
                 summary=f"Updated by {_active_model or 'AI'}",
                 source="ai",
             )
+            diff = _doc_diff(doc.current_content, new_content, doc.title)
             doc.current_content = new_content
             doc.version_count = new_ver
             db.add(ver)
             db.commit()
 
-            return {
+            result = {
                 "action": "update",
                 "doc_id": target_id,
                 "title": doc.title,
@@ -552,6 +568,9 @@ class UpdateDocumentTool:
                 "content": new_content,
                 "version": new_ver,
             }
+            if diff:
+                result["diff"] = diff
+            return result
         except Exception as e:
             db.rollback()
             return {"error": f"Failed to update document: {e}"}
@@ -645,6 +664,7 @@ class EditDocumentTool:
                     }
                 return {"error": "No edits applied — FIND text cannot be blank"}
 
+            _content_before_edits = doc.current_content
             updated_content, applied, skipped = _apply_edits(doc.current_content, edits)
             retarget_note = None
 
@@ -665,6 +685,7 @@ class EditDocumentTool:
                             break
                 if len(candidates) == 1:
                     doc, updated_content, applied, skipped = candidates[0]
+                    _content_before_edits = doc.current_content
                     target_id = doc.id
                     set_active_document(target_id)
                     retarget_note = (
@@ -720,6 +741,9 @@ class EditDocumentTool:
                 "applied": applied,
                 "skipped": skipped,
             }
+            diff = _doc_diff(_content_before_edits, updated_content, doc.title)
+            if diff:
+                result["diff"] = diff
             if retarget_note:
                 result["note"] = retarget_note
             return result

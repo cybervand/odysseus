@@ -8499,7 +8499,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
   // ---- Diff mode (line-level review) ----
 
-  const DIFF_MODE_THRESHOLD = 3; // min changed lines to trigger diff mode
+  const DIFF_MODE_THRESHOLD = 1; // every AI edit shows highlighted changes for review
 
   /** Line-level LCS diff algorithm */
   function _computeLineDiff(oldText, newText) {

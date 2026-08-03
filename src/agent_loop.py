@@ -3027,6 +3027,15 @@ def _build_actions_snapshot(tool_events: list, limit: int = 8000) -> str:
         rc_s = f" (exit {rc})" if rc not in (None, 0) else ""
         body = (out[:1200] + " …") if len(out) > 1200 else (out or "(no output)")
         parts.append(f"{head}{rc_s}\n-> {body}")
+        # Show the verifier WHAT changed, not just that an edit ran. Without
+        # the diff it judges edits blind and false-rejects real work ("content
+        # not shown") or passes fabricated claims (no way to tell the
+        # difference from the outside).
+        _diff = ev.get("diff")
+        if isinstance(_diff, dict) and _diff.get("text"):
+            _dt = _diff["text"]
+            _dhead = (_dt[:900] + " …") if len(_dt) > 900 else _dt
+            parts.append(f"[diff applied by {tool}: +{_diff.get('added', 0)} -{_diff.get('removed', 0)}]\n{_dhead}")
     snap = "\n\n".join(parts)
     return snap[:limit] if len(snap) > limit else snap
 
@@ -5191,6 +5200,10 @@ async def stream_agent_loop(
                     "document_version": result.get("version"),
                     "document_content": result.get("content", ""),
                 })
+            # Diff (+N/-M and colored lines) renders in the live tool card via
+            # the same path file edits use; document tools now emit it too.
+            if isinstance(result.get("diff"), dict):
+                tool_output_data["diff"] = result["diff"]
             if _pending_ask_user_event:
                 # Keep enough state in the streamed tool result for alternate
                 # clients to render the prompt without depending on event order.
