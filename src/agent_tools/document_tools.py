@@ -835,7 +835,12 @@ class ManageDocumentTool:
 
         try:
             if action == "list":
-                q = db.query(Document).filter(Document.is_active == True)
+                # The LIBRARY, not the editor's open tabs: is_active only means
+                # "open in a session" (a UI presence flag). Filtering on it made
+                # closed documents cease to exist for the agent — the library
+                # manifest advertised a doc, and list/read denied it. Archived
+                # is the actual soft-delete; that stays hidden.
+                q = db.query(Document).filter(Document.archived == False)  # noqa: E712
                 q = _owned_document_query(q, Document, owner)
                 if args.get("search"):
                     q = q.filter(Document.title.ilike(f"%{args['search']}%"))
@@ -852,8 +857,9 @@ class ManageDocumentTool:
                     lang = d.language or "text"
                     ts = getattr(d, 'updated_at', None) or getattr(d, 'created_at', None)
                     marker = " ← most recent" if i == 0 else ""
+                    open_marker = ", open in editor" if d.is_active else ""
                     lines.append(
-                        f"- [{d.title}](#document-{d.id}) — {lang}, {size} chars, updated {_rel(ts)}{marker}"
+                        f"- [{d.title}](#document-{d.id}) — {lang}, {size} chars, updated {_rel(ts)}{open_marker}{marker}"
                     )
                     items.append({"id": d.id, "title": d.title, "language": lang, "size": size})
                 header = f"Found {len(docs)} document(s), sorted most-recent first. Click a title to open:"
@@ -867,7 +873,10 @@ class ManageDocumentTool:
                 doc_id = args.get("document_id") or args.get("id") or args.get("uid")
                 if not doc_id:
                     return {"error": "Need document_id (use action=list to find one)", "exit_code": 1}
-                doc = _get_owned_document(db, Document, doc_id, owner, active_only=True)
+                # No active_only: reading a document that isn't open in the
+                # editor is the normal case for an agent working from the
+                # library manifest. "Not open" must never read as "not found".
+                doc = _get_owned_document(db, Document, doc_id, owner)
                 if not doc:
                     return {"error": f"Document '{doc_id}' not found", "exit_code": 1}
                 body = doc.current_content or ""
