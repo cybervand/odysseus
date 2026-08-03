@@ -65,3 +65,11 @@ unique-text miss retargeted with note.
 ## Decision log
 
 - 2026-08-04 — targeting + retarget + error shipped (6f08338c).
+- 2026-08-04 — update_document gained the same `DOC:`/`document_id`
+  targeting (it had none: a full rewrite aimed at fire_cube.frag landed on
+  a different shader) plus an anti-clobber guard: a replacement containing
+  elision markers ("omitted for brevity", "// placeholder", ...) that also
+  shrinks the document is refused — a skeleton rewrite destroyed a real
+  shader once (restored via the version-history endpoint). suggest_document
+  still untargeted — lower risk (it never writes), do with open item 2
+  (e0c365d2).
