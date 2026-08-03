@@ -10656,9 +10656,15 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       if (reuseId) docId = reuseId;
     }
 
-    // Capture old content before updating the map
+    // Capture old content before updating the map. The live textarea wins
+    // when this doc is the active tab (it has the user's unsaved keystrokes),
+    // but fall back to the doc map — otherwise an AI edit that lands while
+    // the panel is docked or another tab is focused has no "old" to diff
+    // against and silently skips the change highlighting.
     const textarea = document.getElementById('doc-editor-textarea');
-    const oldContent = (docId === activeDocId && textarea) ? textarea.value : '';
+    const oldContent = (docId === activeDocId && textarea && textarea.value)
+      ? textarea.value
+      : (docs.get(docId)?.content || '');
     const isExistingDoc = docs.has(docId);
     if (isExistingDoc) {
       const existingDoc = docs.get(docId);
