@@ -65,3 +65,8 @@ was that shader you wrote?" went from denial → `manage_documents
 
 - 2026-08-03 — session manifest + force-offer (6620ffd5).
 - 2026-08-04 — owner-library section for new chats; "no file path" line (f8b29410).
+- 2026-08-04 — manage_documents list/read no longer filter on `is_active`
+  (978c792c). `is_active` = "open in the editor panel", a UI presence flag;
+  filtering on it made a closed document "not found" by exact id while this
+  manifest advertised it. list = all non-archived owned docs, open ones
+  marked; read works on closed docs; archived remains the soft-delete.
