@@ -7323,10 +7323,15 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const restoreMode = !!opts.restoreMode;
     const shouldRestoreOpen = localStorage.getItem(_docOpenKey(sessionId)) === '1';
     const shouldRestoreMinimized = localStorage.getItem(_docMinimizedKey(sessionId)) === '1';
-    // Clear docs from other sessions so tabs are per-session,
-    // but keep session-less docs (e.g. email compose) — they're independent
+    // Clear docs from other sessions so tabs are per-session. Session-less
+    // docs are kept ONLY for email compose (drafts are chat-independent);
+    // any other session-less doc (opened from the Library, or registered
+    // before a new chat had an id) would otherwise survive every switch and
+    // haunt each new chat with a phantom "Document" chip.
     for (const [id, doc] of [...docs]) {
+      const isEmail = ((doc.language || '') + '').toLowerCase() === 'email';
       if (doc.sessionId && doc.sessionId !== sessionId) docs.delete(id);
+      else if (!doc.sessionId && !isEmail) docs.delete(id);
     }
     activeDocId = null;
 
