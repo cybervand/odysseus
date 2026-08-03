@@ -633,9 +633,10 @@ Edit a document OPEN IN THE EDITOR PANEL — NOT a file on disk. For files on di
 
     "update_document": """\
 ```update_document
+DOC: <document_id or title — optional; targets that document instead of the active one>
 <entire new content>
 ```
-Replace the ENTIRE active document. ONLY use when you're genuinely rewriting more than half of it from scratch. For any smaller change, use edit_document — echoing back the whole file for a two-line edit wastes tokens and is hard to review.""",
+Replace the ENTIRE content of a document. ONLY use when you're genuinely rewriting more than half of it from scratch, and ALWAYS send the complete document — never elide sections with placeholders like "rest unchanged" or "omitted for brevity" (elided sections would be DELETED). For any smaller change, use edit_document — echoing back the whole file for a two-line edit wastes tokens and is hard to review.""",
 
     "suggest_document": """\
 ```suggest_document

@@ -311,11 +311,15 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "update_document",
-            "description": "Replace the ENTIRE active document. ONLY use for genuine full rewrites (>50% of lines changed). For any smaller change, use edit_document — echoing back the whole file for small edits is wasteful.",
+            "description": "Replace the ENTIRE content of a document. ONLY use for genuine full rewrites (>50% of lines changed) and ALWAYS send the complete document — never elide sections with placeholders like 'rest unchanged'. For any smaller change, use edit_document.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "content": {"type": "string", "description": "Complete new document content"}
+                    "content": {"type": "string", "description": "Complete new document content — every line, no elisions"},
+                    "document_id": {
+                        "type": "string",
+                        "description": "Which document to replace — id (or exact title) from manage_documents or the session library manifest. Without this the rewrite goes to the currently active document, which may NOT be the one you mean."
+                    }
                 },
                 "required": ["content"]
             }
@@ -1487,6 +1491,8 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         content = "\n".join(blocks)
     elif tool_type == "update_document":
         content = args.get("content", "")
+        if args.get("document_id"):
+            content = f'DOC: {args["document_id"]}\n{content}'
     elif tool_type == "search_chats":
         content = args.get("query", "")
     elif tool_type == "chat_with_model":

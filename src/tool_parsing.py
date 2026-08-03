@@ -685,6 +685,8 @@ def _raw_openai_tool_call_to_block(value) -> Optional[ToolBlock]:
         content = "\n".join(parts)
     elif tool_type == "update_document":
         content = args.get("content", "")
+        if args.get("document_id"):
+            content = f'DOC: {args["document_id"]}\n{content}'
     elif tool_type in ("edit_document", "suggest_document"):
         marker = "SUGGEST" if tool_type == "suggest_document" else "REPLACE"
         blocks = []

@@ -501,19 +501,42 @@ class CreateDocumentTool:
         finally:
             db.close()
 
-class UpdateDocumentTool:    
+_ELISION_MARKERS = (
+    "omitted for brevity", "omitted for clarity", "rest unchanged",
+    "rest of the code unchanged", "existing code here", "unchanged code",
+    "placeholder function", "... (omitted", "// placeholder",
+)
+
+
+class UpdateDocumentTool:
     async def execute(self, content: str, ctx: dict) -> Dict:
-        """Update an existing document. Content = full new document text."""
+        """Update an existing document. Content = full new document text.
+        Optional `DOC: <id-or-title>` first line targets a specific document
+        (same protocol as edit_document)."""
         import uuid
         from src.database import SessionLocal, Document, DocumentVersion
 
-        target_id = ctx.get("doc_id", None) or _active_document_id
         owner = ctx.get("owner")
+        target_ref, content = extract_edit_target(content)
+        target_id = ctx.get("doc_id", None) or _active_document_id
 
         db = SessionLocal()
         try:
             doc = None
-            if target_id:
+            if target_ref:
+                doc = _get_owned_document(db, Document, target_ref, owner)
+                if not doc:
+                    q = _owned_document_query(db.query(Document), Document, owner)
+                    doc = (
+                        q.filter(Document.title.ilike(target_ref))
+                        .order_by(Document.updated_at.desc())
+                        .first()
+                    )
+                if not doc:
+                    return {"error": f"No document found with id or title {target_ref!r} — use manage_documents action=\"list\" to see ids and titles"}
+                target_id = doc.id
+                set_active_document(target_id)
+            if not doc and target_id:
                 doc = _get_owned_document(db, Document, target_id, owner)
             if not doc:
                 doc = _most_recent_owned_document(db, Document, owner)
@@ -526,6 +549,23 @@ class UpdateDocumentTool:
 
             is_email_doc = doc.language == "email" or _looks_like_email_document(doc.current_content or "", doc.title or "")
             new_content = _coerce_email_document_content(doc.current_content or "", content) if is_email_doc else content.strip()
+
+            # Anti-clobber: update_document REPLACES the whole document. A
+            # rewrite that both shrinks it and contains elision markers is a
+            # template/skeleton, not a document ("existing fire calculations
+            # ... omitted for brevity" destroyed a real shader once). Refuse
+            # and point at edit_document for partial changes.
+            if not is_email_doc:
+                _old_len = len(doc.current_content or "")
+                _lower = new_content.lower()
+                _marker = next((m for m in _ELISION_MARKERS if m in _lower), None)
+                if _marker and _old_len > 0 and len(new_content) < _old_len:
+                    return {"error": (
+                        f"Refused: the replacement text contains {_marker!r} and is shorter than the "
+                        f"current document — update_document replaces the ENTIRE document, so elided "
+                        f"sections would be lost. Send the complete document, or use edit_document "
+                        f"with FIND/REPLACE blocks for a partial change."
+                    ), "exit_code": 1}
             if is_email_doc:
                 doc.language = "email"
 
