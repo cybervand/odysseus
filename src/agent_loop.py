@@ -3000,6 +3000,19 @@ _VERIFIER_EFFECTFUL_TOOLS = {
 _VERIFIER_MAX_ROUNDS = 2  # cap re-verify cycles per turn — never loop forever
 
 
+def _round_clears_verifier_flag(tool_blocks: list) -> bool:
+    """Whether this round's tool calls count as addressing a verifier flag.
+
+    Only effectful work qualifies. Read-only calls (manage_documents read,
+    listing, workspace peeks) must not clear the flag — otherwise a model
+    can dodge a verifier failure by reading something and then claiming the
+    fix happened (observed live with gpt-oss)."""
+    return any(
+        getattr(b, "tool_type", None) in _VERIFIER_EFFECTFUL_TOOLS
+        for b in (tool_blocks or [])
+    )
+
+
 def _build_actions_snapshot(tool_events: list, limit: int = 8000) -> str:
     """Compact record of what the agent actually did this turn, for the
     verifier to judge against. One block per tool execution: the command and
@@ -4564,8 +4577,9 @@ async def stream_agent_loop(
         # a long run don't exhaust the budget but a stuck model still stops.
         if tool_blocks:
             _bad_tool_feedback_rounds = 0
-            _verifier_fix_pending = False
             _reasoning_only_nudges = 0  # consecutive cap: a real tool round resets it
+            if _round_clears_verifier_flag(tool_blocks):
+                _verifier_fix_pending = False
         if failed_native_calls and not tool_blocks and not _force_answer \
                 and _bad_tool_feedback_rounds < 3:
             _bad_tool_feedback_rounds += 1
@@ -4653,10 +4667,12 @@ async def stream_agent_loop(
                 messages.append({
                     "role": "system",
                     "content": (
-                        "You made no fixes — no tools have run since the verifier's "
-                        "findings. Either fix the flagged items NOW using tools, or "
-                        "state explicitly which items cannot be fixed and why. Reply "
-                        "with a short note only; do not restate your full report."
+                        "You made no fixes — nothing effectful has run since the "
+                        "verifier's findings (reading or listing is not fixing, and "
+                        "claiming the fix is done does not make it done). Either fix "
+                        "the flagged items NOW using tools, or state explicitly which "
+                        "items cannot be fixed and why. Reply with a short note only; "
+                        "do not restate your full report."
                     ),
                 })
                 yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
