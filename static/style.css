@@ -14161,20 +14161,20 @@ mark.doc-find-mark.current {
 .diff-toolbar-btn-accept:hover { border-color: #58a6ff; background: color-mix(in srgb, #58a6ff 12%, transparent); }
 .diff-toolbar-btn-reject { color: #f2cc60; border-color: color-mix(in srgb, #f2cc60 36%, transparent); }
 .diff-toolbar-btn-reject:hover { border-color: #f2cc60; background: color-mix(in srgb, #f2cc60 12%, transparent); }
+/* Editor diff lines — match the chat diff and git convention: green tint
+   for added, red tint for deleted, normal text color so code stays readable
+   (the tinted background carries the meaning, VS Code style). */
 .diff-line-del {
   display: block;
-  background: color-mix(in srgb, #f2cc60 24%, transparent);
-  border-left: 3px solid #f2cc60;
-  color: #f2cc60;
+  background: color-mix(in srgb, var(--red, #e74c3c) 22%, transparent);
+  border-left: 3px solid var(--red, #e74c3c);
   padding-left: 4px;
   margin-left: -7px;
-  text-decoration: line-through;
 }
 .diff-line-add {
   display: block;
-  background: color-mix(in srgb, #58a6ff 24%, transparent);
-  border-left: 3px solid #58a6ff;
-  color: #58a6ff;
+  background: color-mix(in srgb, var(--green, #2ecc71) 22%, transparent);
+  border-left: 3px solid var(--green, #2ecc71);
   padding-left: 4px;
   margin-left: -7px;
 }
@@ -14228,10 +14228,11 @@ mark.doc-find-mark.current {
   color: inherit;
 }
 .doc-editor-wrap.diff-mode .diff-line-del {
-  color: #f2cc60 !important;
+  color: var(--fg) !important;
+  opacity: 0.75;
 }
 .doc-editor-wrap.diff-mode .diff-line-add {
-  color: #58a6ff !important;
+  color: var(--fg) !important;
 }
 .diff-chunk-btn {
   width: 20px;
