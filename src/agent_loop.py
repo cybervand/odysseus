@@ -622,13 +622,14 @@ Create a NEW document in the editor panel. Only use when the user explicitly ask
 
     "edit_document": """\
 ```edit_document
+DOC: <document_id or title — optional; targets that document instead of the active one>
 <<<FIND>>>
 old text to find
 <<<REPLACE>>>
 new replacement text
 <<<END>>>
 ```
-Edit a document OPEN IN THE EDITOR PANEL — NOT a file on disk. For files on disk (home folder, project files, any real path like ~/sweden.txt) use `edit_file` instead. Find exact text and replace it. Multiple FIND/REPLACE blocks per call OK. Use for any edit smaller than a full rewrite. **If a document is open in the editor, treat it as the user's current context: don't ask which file they mean, and don't create a new one — just edit_document the active one.** Do NOT re-send the whole file with update_document for small changes.""",
+Edit a document OPEN IN THE EDITOR PANEL — NOT a file on disk. For files on disk (home folder, project files, any real path like ~/sweden.txt) use `edit_file` instead. Find exact text and replace it. Multiple FIND/REPLACE blocks per call OK. Use for any edit smaller than a full rewrite. **If a document is open in the editor, treat it as the user's current context: don't ask which file they mean, and don't create a new one — just edit_document the active one.** When editing a document you found via manage_documents or the session library (not the open one), put `DOC: <its id>` as the first line. Do NOT re-send the whole file with update_document for small changes.""",
 
     "update_document": """\
 ```update_document

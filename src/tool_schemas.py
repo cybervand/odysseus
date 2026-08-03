@@ -271,6 +271,10 @@ FUNCTION_TOOL_SCHEMAS = [
                             },
                             "required": ["find", "replace"]
                         }
+                    },
+                    "document_id": {
+                        "type": "string",
+                        "description": "Which document to edit — id (or exact title) from manage_documents or the session library manifest. Without this the edit goes to the currently active document, which may NOT be the one you just read."
                     }
                 },
                 "required": ["edits"]
@@ -1467,6 +1471,8 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
                 f'<<<FIND>>>\n{edit.get("find", "")}\n<<<REPLACE>>>\n{edit.get("replace", "")}\n<<<END>>>'
             )
         content = "\n".join(blocks)
+        if args.get("document_id"):
+            content = f'DOC: {args["document_id"]}\n{content}'
     elif tool_type == "suggest_document":
         blocks = []
         suggestions = args.get("suggestions", [])

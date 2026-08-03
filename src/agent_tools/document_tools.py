@@ -226,6 +226,52 @@ def parse_edit_blocks(content: str) -> list:
         edits.append({"find": m.group(1), "replace": m.group(2)})
     return edits
 
+
+_EDIT_TARGET_RE = re.compile(r"^\s*DOC(?:UMENT)?(?:_ID)?\s*[:=]\s*(.+?)\s*$", re.IGNORECASE)
+
+
+def extract_edit_target(content: str) -> tuple:
+    """Split an optional `DOC: <id-or-title>` header off edit-block content.
+
+    edit_document historically had NO way for the model to say WHICH document
+    it means — the target came from a process-global active-doc pointer, so a
+    model that just read document A via manage_documents would silently edit
+    document B. Returns (target_ref_or_None, remaining_content).
+    """
+    if not content:
+        return None, content
+    head, sep, rest = content.partition("\n")
+    m = _EDIT_TARGET_RE.match(head)
+    if m and "<<<FIND>>>" not in head:
+        return m.group(1), rest
+    return None, content
+
+
+def _apply_edits(text: str, edits: list) -> tuple:
+    """Apply FIND/REPLACE edits to text. Returns (updated, applied, skipped)."""
+    applied = 0
+    skipped = 0
+    for edit in edits:
+        _find = edit["find"]
+        if _find in text:
+            text = text.replace(_find, edit["replace"], 1)
+            applied += 1
+            continue
+        # Defensive: the active-doc context shows a "N\t" line-number gutter
+        # for reference. Weaker models sometimes copy that prefix into FIND.
+        # Retry with a leading "<digits><tab>" stripped from each FIND line —
+        # but only when the stripped form actually matches, so a legitimately
+        # tab-prefixed document is never corrupted.
+        _stripped = "\n".join(re.sub(r"^\d+\t", "", _l) for _l in _find.split("\n"))
+        if _stripped != _find and _stripped in text:
+            text = text.replace(_stripped, edit["replace"], 1)
+            applied += 1
+            logger.info("edit_document: matched after stripping line-number gutter from FIND")
+        else:
+            logger.warning(f"edit_document: FIND text not found, skipping: {_find[:80]!r}")
+            skipped += 1
+    return text, applied, skipped
+
 def parse_suggest_blocks(content: str) -> list:
     """Parse <<<FIND>>>...<<<SUGGEST>>>...<<<REASON>>>...<<<END>>> blocks."""
     suggestions = []
@@ -518,8 +564,10 @@ class EditDocumentTool:
         import uuid
         from src.database import SessionLocal, Document, DocumentVersion
 
-        target_id = ctx.get("doc_id", None) or _active_document_id
         owner = ctx.get("owner")
+
+        target_ref, content = extract_edit_target(content)
+        target_id = ctx.get("doc_id", None) or _active_document_id
 
         edits = parse_edit_blocks(content)
         if not edits:
@@ -528,7 +576,21 @@ class EditDocumentTool:
         db = SessionLocal()
         try:
             doc = None
-            if target_id:
+            if target_ref:
+                # The model named its target — that beats the active-doc pointer.
+                doc = _get_owned_document(db, Document, target_ref, owner)
+                if not doc:
+                    q = _owned_document_query(db.query(Document), Document, owner)
+                    doc = (
+                        q.filter(Document.title.ilike(target_ref))
+                        .order_by(Document.updated_at.desc())
+                        .first()
+                    )
+                if not doc:
+                    return {"error": f"No document found with id or title {target_ref!r} — use manage_documents action=\"list\" to see ids and titles"}
+                target_id = doc.id
+                set_active_document(target_id)
+            if not doc and target_id:
                 doc = _get_owned_document(db, Document, target_id, owner)
             if not doc:
                 # Fallback: most recently updated document. Avoids "no active doc" errors
@@ -583,32 +645,40 @@ class EditDocumentTool:
                     }
                 return {"error": "No edits applied — FIND text cannot be blank"}
 
-            updated_content = doc.current_content
-            applied = 0
-            skipped = 0
-            for edit in edits:
-                _find = edit["find"]
-                if _find in updated_content:
-                    updated_content = updated_content.replace(_find, edit["replace"], 1)
-                    applied += 1
-                else:
-                    # Defensive: the active-doc context shows a "N\t" line-number
-                    # gutter for reference. Weaker models sometimes copy that prefix
-                    # into FIND. If the exact match failed, retry with a leading
-                    # "<digits><tab>" stripped from each FIND line — but only use it
-                    # when that stripped form actually matches, so we never corrupt a
-                    # legitimately tab-prefixed document.
-                    _stripped = "\n".join(re.sub(r"^\d+\t", "", _l) for _l in _find.split("\n"))
-                    if _stripped != _find and _stripped in updated_content:
-                        updated_content = updated_content.replace(_stripped, edit["replace"], 1)
-                        applied += 1
-                        logger.info("edit_document: matched after stripping line-number gutter from FIND")
-                    else:
-                        logger.warning(f"edit_document: FIND text not found, skipping: {_find[:80]!r}")
-                        skipped += 1
+            updated_content, applied, skipped = _apply_edits(doc.current_content, edits)
+            retarget_note = None
+
+            if applied == 0 and not target_ref:
+                # Nothing matched the active/fallback doc and the model didn't
+                # name a target. The likely truth: the model read some OTHER
+                # document (library manifest, manage_documents) and the global
+                # active-doc pointer betrayed it. If exactly one of the owner's
+                # documents matches the edits, the intent is unambiguous —
+                # apply there instead of dead-ending.
+                candidates = []
+                q = _owned_document_query(db.query(Document), Document, owner)
+                for cand in q.filter(Document.id != doc.id).order_by(Document.updated_at.desc()).limit(20):
+                    _upd, _app, _skip = _apply_edits(cand.current_content or "", edits)
+                    if _app > 0:
+                        candidates.append((cand, _upd, _app, _skip))
+                        if len(candidates) > 1:
+                            break
+                if len(candidates) == 1:
+                    doc, updated_content, applied, skipped = candidates[0]
+                    target_id = doc.id
+                    set_active_document(target_id)
+                    retarget_note = (
+                        f"Note: FIND did not match the active document — the edit was applied to "
+                        f"{doc.title!r} (id={doc.id}), the only document containing that text."
+                    )
+                    logger.info(f"edit_document: retargeted to id={doc.id} title={doc.title!r} after active-doc miss")
 
             if applied == 0:
-                return {"error": f"No edits applied — none of the FIND blocks matched the document content (skipped {skipped})"}
+                return {"error": (
+                    f"No edits applied — none of the FIND blocks matched {doc.title!r}, the targeted document "
+                    f"(skipped {skipped}). If you meant a different document, add a first line 'DOC: <document_id or title>' "
+                    f"before the <<<FIND>>> block; manage_documents action=\"list\" shows ids and titles."
+                )}
 
             missing_id = _missing_document_upload(owner, updated_content)
             if missing_id:
@@ -640,7 +710,7 @@ class EditDocumentTool:
             db.add(ver)
             db.commit()
 
-            return {
+            result = {
                 "action": "edit",
                 "doc_id": target_id,
                 "title": doc.title,
@@ -650,6 +720,9 @@ class EditDocumentTool:
                 "applied": applied,
                 "skipped": skipped,
             }
+            if retarget_note:
+                result["note"] = retarget_note
+            return result
         except Exception as e:
             db.rollback()
             return {"error": f"Failed to edit document: {e}"}

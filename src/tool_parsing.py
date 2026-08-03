@@ -696,6 +696,8 @@ def _raw_openai_tool_call_to_block(value) -> Optional[ToolBlock]:
                 block += f'\n<<<REASON>>>\n{edit.get("reason", "")}'
             blocks.append(block + "\n<<<END>>>")
         content = "\n".join(blocks)
+        if tool_type == "edit_document" and args.get("document_id"):
+            content = f'DOC: {args["document_id"]}\n{content}'
     elif tool_type == "search_chats":
         content = args.get("query", "")
     elif tool_type == "chat_with_model":
