@@ -1076,30 +1076,67 @@ def _session_documents(session_id: str) -> List[Dict]:
     ]
 
 
-def _session_library_context_message(docs: List[Dict]) -> Optional[Dict]:
-    """Manifest of documents that live in this session's library.
+def _owner_library_documents(owner: str, exclude_session: Optional[str], limit: int = 5) -> List[Dict]:
+    """Owner's most recent documents from OTHER chats. A new chat has no
+    session documents, but the user's library still exists — without this
+    the model asks for file paths to documents it wrote yesterday."""
+    if not owner:
+        return []
+    from core.database import Document, SessionLocal
+    db = SessionLocal()
+    try:
+        q = db.query(Document.id, Document.title, Document.language, Document.updated_at).filter(
+            Document.owner == owner, Document.archived == False  # noqa: E712
+        )
+        if exclude_session:
+            from sqlalchemy import or_
+            q = q.filter(or_(Document.session_id != exclude_session, Document.session_id.is_(None)))
+        rows = q.order_by(Document.updated_at.desc()).limit(limit).all()
+    finally:
+        db.close()
+    return [
+        {"id": r[0], "title": r[1], "language": r[2], "updated_at": r[3]}
+        for r in rows
+    ]
 
-    The agent's own artifacts are DB rows, invisible to every file tool;
-    history trimming drops the turns that created them; and the document
-    tools are keyword-gated. Net effect without this note: the agent writes
-    a document, then one turn later truthfully denies it can access it.
-    Titles only — content stays behind manage_documents so the note costs
-    a few dozen tokens instead of the documents themselves.
+
+def _session_library_context_message(docs: List[Dict], library_docs: Optional[List[Dict]] = None) -> Optional[Dict]:
+    """Manifest of documents reachable to the agent: this session's, plus the
+    owner's most recent from other chats.
+
+    The agent's artifacts are DB rows, invisible to every file tool; history
+    trimming drops the turns that created them; the document tools are
+    keyword-gated; and a NEW chat has no session documents at all — so the
+    model asks for file paths to documents it wrote yesterday. Titles only —
+    content stays behind manage_documents so the note costs a few dozen
+    tokens instead of the documents themselves.
     """
-    if not docs:
+    library_docs = library_docs or []
+    if not docs and not library_docs:
         return None
-    lines = ["Documents in this session's library (created or edited in earlier turns, possibly by you):"]
-    for d in docs:
+
+    def _fmt(d):
         bits = [f"id={d.get('id', '')}", f"title={d.get('title') or 'Untitled'}"]
         if d.get("language"):
             bits.append(f"language={d.get('language')}")
         if d.get("updated_at"):
             bits.append(f"updated={str(d.get('updated_at'))[:16]}")
-        lines.append("- " + "; ".join(bits))
+        return "- " + "; ".join(bits)
+
+    lines = []
+    if docs:
+        lines.append("Documents in this session's library (created or edited in earlier turns, possibly by you):")
+        lines.extend(_fmt(d) for d in docs)
+    if library_docs:
+        if lines:
+            lines.append("")
+        lines.append("Recent documents in the user's library from OTHER chats (also yours to read/edit):")
+        lines.extend(_fmt(d) for d in library_docs)
     lines.extend([
         "",
         'Read one with manage_documents (action="read", document_id=...); list all with action="list". '
-        "Do not claim these are lost or inaccessible — they are one tool call away.",
+        "These need no file path — do not ask the user for one, and do not claim they are lost or "
+        "inaccessible; they are one tool call away.",
     ])
     return untrusted_context_message("session document library", "\n".join(lines))
 
@@ -3303,15 +3340,24 @@ async def stream_agent_loop(
         messages = _insert_before_latest_user(messages, _upload_msg)
 
     _session_docs: List[Dict] = []
+    _library_docs: List[Dict] = []
     if session_id:
         try:
             _session_docs = _session_documents(session_id)
         except Exception as e:
             logger.debug(f"[agent] session library lookup failed: {e}")
-    _library_msg = _session_library_context_message(_session_docs)
+    if owner:
+        try:
+            _library_docs = _owner_library_documents(owner, session_id)
+        except Exception as e:
+            logger.debug(f"[agent] owner library lookup failed: {e}")
+    _library_msg = _session_library_context_message(_session_docs, _library_docs)
     if _library_msg:
         messages = _insert_before_latest_user(messages, _library_msg)
-        logger.info(f"[agent] session library manifest injected: {len(_session_docs)} document(s)")
+        logger.info(
+            f"[agent] library manifest injected: {len(_session_docs)} session doc(s), "
+            f"{len(_library_docs)} from other chats"
+        )
 
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
@@ -3634,11 +3680,11 @@ async def stream_agent_loop(
             _relevant_tools = set(ALWAYS_AVAILABLE)
         _relevant_tools.update({"read_file", "grep", "ls", "manage_documents"})
 
-    # Same principle for the session's own document library: artifacts the
-    # agent created must stay reachable without keyword roulette. The library
-    # manifest above tells the model they exist; this makes the tools that
-    # can read/edit them actually available.
-    if not guide_only and _session_docs:
+    # Same principle for the user's document library: artifacts the agent (or
+    # the user) created must stay reachable without keyword roulette — in this
+    # chat or any other. The library manifest above tells the model they
+    # exist; this makes the tools that can read/edit them actually available.
+    if not guide_only and (_session_docs or _library_docs):
         if _relevant_tools is None:
             from src.tool_index import ALWAYS_AVAILABLE
             _relevant_tools = set(ALWAYS_AVAILABLE)

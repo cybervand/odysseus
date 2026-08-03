@@ -43,6 +43,25 @@ def test_manifest_carries_no_document_content():
 
 def test_no_documents_no_manifest():
     assert agent_loop._session_library_context_message([]) is None
+    assert agent_loop._session_library_context_message([], []) is None
+
+
+def test_new_chat_sees_library_from_other_chats():
+    # A NEW session has no session docs — the owner's library must still
+    # appear, or the model asks for file paths to docs it wrote yesterday.
+    msg = agent_loop._session_library_context_message([], _docs())
+    text = str(msg.get("content"))
+    assert "OTHER chats" in text
+    assert "Cube Shader Pair" in text
+    assert "do not ask the user" in text
+
+
+def test_both_sections_render():
+    session = [_docs()[0]]
+    library = [_docs()[1]]
+    text = str(agent_loop._session_library_context_message(session, library).get("content"))
+    assert text.index("this session's library") < text.index("OTHER chats")
+    assert "Cube Shader Pair" in text and "Code (glsl)" in text
 
 
 def test_session_documents_queries_by_session(monkeypatch):
