@@ -92,6 +92,13 @@ Runner: `/tmp/gauntlet.sh` (server) → CSV. Results below per run.
   - Meta: every zero had terminal=True + full toolbox per policy records
     — round 2's failures are 100% dialect, 0% gates. Doc 009 vindicated.
 
+- 2026-08-04 — rematch after dialect pattern 3d (902dc787):
+  - **llama3.1:8b — PASS** (3 tools, both files real, 323B+214B). Zero →
+    pass with twenty lines of parser. The registry loop works end to end:
+    gauntlet catches dialect → profile written same day → model passes.
+  - llama3.2:3b — still zero; suspected pythonic dialect ([func(args)]
+    list calls). Transcript autopsy + pythonic pattern next.
+
 ## Open items
 
 - Pull-and-test the remaining nine dialects.
