@@ -49,6 +49,29 @@ anything outside the boundary. The reasoning-field mismatch and the qwen
 parser are the same disease shape; they deserve the same cure, once,
 declaratively.
 
+## Scaling: thousands of models, a dozen dialects
+
+(User, 2026-08-04: "we aren't just building this for gpt-oss — there are
+thousands of models from all over the world.") Three consequences:
+
+1. **The dialect key is not the model name.** Thousands of models are
+   finetunes of a few dozen base families served by a handful of inference
+   servers; conventions come from (family chat-template × backend server).
+   Profiles match on family patterns + backend, not model ids. Expect
+   ~10-20 dialects covering nearly everything: harmony, qwen, deepseek-r1
+   (<think> tags), glm, kimi, llama, mistral, gemma, plus backend variants
+   (ollama vs llama.cpp vs vllm field names).
+2. **Detect, don't enumerate.** For unknown models, PROBE once: send a
+   canary request (one trivial tool + a question), observe which fields
+   come back (reasoning vs reasoning_content vs inline <think>), whether
+   the tool call parses, argument format. Auto-derive a profile, cache it
+   per (model, endpoint), log `dialect=auto-detected:...`. Manual profiles
+   become overrides, not prerequisites.
+3. **Profiles are data, not code** — a JSON/YAML registry users can extend
+   and share. A new model from anywhere becomes a pasted profile or one
+   auto-probe, never a code change. (Also the most upstream-PR-able shape:
+   the community maintains the registry.)
+
 ## Open items
 
 - Inventory pass: grep llm_core/agent_loop for every model-name branch;
