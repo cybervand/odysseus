@@ -1279,6 +1279,9 @@ def _iter_xml_direct(text):
 
 _LLAMA_JSON_CALL_RE = re.compile(r'\{\s*"name"\s*:\s*"[a-zA-Z_][\w-]*"')
 
+# Pattern 3e: a known tool name at line start, alone or with quoted args.
+_BARE_INVOCATION_RE = re.compile(r"^(bash|python|write_file|read_file|edit_file)\b[ \t]*(.*)$")
+
 
 def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
     """Extract executable tool blocks from LLM response text.
@@ -1436,6 +1439,50 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
             block = function_call_to_tool_block(str(obj["name"]), json.dumps(_args))
             if block:
                 blocks.append(block)
+
+    # Pattern 3e: GLM bare-invocation dialect (doc 012 probes, 2026-08-04).
+    # Tool name alone on a line with the command on the next line (bash), or
+    # shell-style quoted args on the same line (write_file "path" "content").
+    # Both probe and gauntlet specimens fabricate success text around these —
+    # parsing them replaces the theater with real execution.
+    if not blocks:
+        lines = text.splitlines()
+        i = 0
+        while i < len(lines):
+            m = _BARE_INVOCATION_RE.match(lines[i])
+            if not m:
+                i += 1
+                continue
+            tool, rest = m.group(1), (m.group(2) or "").strip()
+            if tool in ("bash", "python") and not rest:
+                # Command is the next non-empty line (both specimens single-line).
+                j = i + 1
+                while j < len(lines) and not lines[j].strip():
+                    j += 1
+                if j < len(lines) and not _BARE_INVOCATION_RE.match(lines[j]):
+                    from src.tool_schemas import function_call_to_tool_block
+                    block = function_call_to_tool_block(
+                        tool, json.dumps({"command": lines[j].strip()} if tool == "bash" else {"code": lines[j].strip()})
+                    )
+                    if block:
+                        blocks.append(block)
+                    i = j + 1
+                    continue
+            elif tool == "write_file" and rest.startswith('"'):
+                qm = re.match(r'"([^"]+)"\s+"(.*)', rest, re.S)
+                if qm:
+                    path = qm.group(1)
+                    remainder = qm.group(2) + "\n" + "\n".join(lines[i + 1:])
+                    endq = remainder.rfind('"')
+                    content_body = remainder[:endq] if endq != -1 else remainder
+                    from src.tool_schemas import function_call_to_tool_block
+                    block = function_call_to_tool_block(
+                        "write_file", json.dumps({"path": path, "content": content_body})
+                    )
+                    if block:
+                        blocks.append(block)
+                        break  # consumed the rest of the text as content
+            i += 1
 
     # Pattern 4: <tool_code> blocks (MiniMax-M2.5 style)
     if not blocks:
