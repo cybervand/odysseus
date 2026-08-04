@@ -3188,9 +3188,14 @@ _COMMAND_SIGNAL_RE = re.compile(
 )
 
 
-# Text-dialect families that fabricate tool results (screenplay habit) —
-# they get the turn-taking protocol note each turn (doc 012).
-_DIALECT_TURN_NOTE_MODELS = ("glm4", "glm-4", "hermes", "deepseek-r1", "mistral-nemo", "command-r")
+# Text-dialect families that fabricate tool results (screenplay habit).
+# EXPERIMENT RESULT (doc 012, rematch 3005): the abstract protocol note
+# ("emit ONE invocation, never write outputs") made glm4 WORSE — it changed
+# its emission shape (bare invocations → unparseable generic fences) and
+# fled to create_document. Emission dialects are prompt-sensitive; a v2 note
+# must SHOW the exact expected format (few-shot), not describe it. Disabled
+# until v2; rolled back in production same night.
+_DIALECT_TURN_NOTE_MODELS = ()
 
 
 def _message_signals_commands(text: str) -> bool:

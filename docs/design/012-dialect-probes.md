@@ -38,3 +38,17 @@ pattern? raw markup shape?
 ## Results log
 
 - 2026-08-04 — probes launched: deepseek-r1:14b, glm4:9b.
+- 2026-08-04 — GLM arc, three rematches in one night:
+  1. Pattern 3e (bare invocation) → 0→8 real bash round-trips; writes
+     dropped (second arg shape) → model spent 7 rounds debugging the void.
+  2. Paren-call variant added → first real file (index.html, 1889B); then
+     wrote one file and narrated the rest (fabrication persists).
+  3. **Turn-taking note experiment: REGRESSION.** Abstract protocol
+     instruction changed its emission shape (bare → generic fences, both
+     unparseable) and drove it to create_document (document-world escape).
+     Rolled back same night. LESSON: text dialects are prompt-sensitive —
+     protocol notes must FEW-SHOT the exact expected format, never
+     describe it abstractly. Note disabled pending v2 with examples.
+  - GLM status: dialect parsing DONE (both shapes); remaining =
+    fabrication/persistence → verifier-driven continuation +
+    plan-then-execute, with a format-example note as v2.
