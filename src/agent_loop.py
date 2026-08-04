@@ -4086,6 +4086,9 @@ async def stream_agent_loop(
     # on such turns and at most _VERIFIER_MAX_ROUNDS times.
     _effectful_used = False
     _verifier_rounds = 0
+    # Doc 008: per-turn tool policy snapshot — logged each round, streamed to
+    # the UI once, persisted in the turn's metrics/metadata.
+    _policy_snapshot = None
     _verifier_instruction = _extract_last_user_message(messages)
     # Bad-tool-call feedback state. A native call that fails to convert
     # (hallucinated tool name, unusable arguments) means the model TRIED to
@@ -4236,17 +4239,30 @@ async def stream_agent_loop(
 
         _tool_names_sent = [t.get("function", {}).get("name") for t in (all_tool_schemas or []) if t.get("function")]
         logger.info(f"[agent-debug] round={round_num} model={model} _is_api_model={_is_api_model} tools_sent={len(_tool_names_sent)} tool_names={_tool_names_sent[:15]} relevant_tools={sorted(_relevant_tools)[:15] if _relevant_tools else 'ALL'}")
-        # Phase 1 of design doc 008: the per-turn policy must be readable, not
-        # inferred — which gate removed a tool has been argued about three
-        # times too many. terminal/web reflect the EFFECTIVE state after all
-        # gates (route toggles, admin policy, plan mode, model blocklists).
+        # Design doc 008: the per-turn policy must be readable, not inferred —
+        # which gate removed a tool has been argued about three times too
+        # many. terminal/web reflect the EFFECTIVE state after all gates
+        # (route toggles, admin policy, plan mode, model blocklists). The
+        # snapshot is logged every round, streamed to the UI once, and rides
+        # the final metrics into the message metadata.
+        _policy_snapshot = {
+            "terminal": "bash" in _tool_names_sent,
+            "web_search": "web_search" in _tool_names_sent,
+            "workspace": workspace or None,
+            "disabled": sorted(disabled_tools) if disabled_tools else [],
+            "forced": sorted(forced_tools) if forced_tools else [],
+            "tools_sent": len(_tool_names_sent),
+            "model": model,
+        }
         logger.info(
-            f"[agent-policy] terminal={'bash' in _tool_names_sent} "
-            f"web_search={'web_search' in _tool_names_sent} "
-            f"workspace={workspace or None} "
-            f"disabled={sorted(disabled_tools)[:12] if disabled_tools else []} "
-            f"forced={sorted(forced_tools)[:8] if forced_tools else []}"
+            f"[agent-policy] terminal={_policy_snapshot['terminal']} "
+            f"web_search={_policy_snapshot['web_search']} "
+            f"workspace={_policy_snapshot['workspace']} "
+            f"disabled={_policy_snapshot['disabled'][:12]} "
+            f"forced={_policy_snapshot['forced'][:8]}"
         )
+        if round_num == 1:
+            yield f'data: {json.dumps({"type": "tool_policy", **_policy_snapshot})}\n\n'
 
         # Primary target + any configured fallback models. stream_llm_with_fallback
         # only switches on a pre-content failure, so streamed output is never
@@ -5670,6 +5686,10 @@ async def stream_agent_loop(
         backend_prefill_tps=backend_prefill_tps,
     )
     metrics["requested_model"] = requested_model
+    if _policy_snapshot:
+        # Rides into chat_messages.metadata via save_assistant_response, so
+        # "what was on when this turn ran" is answerable from the chat log.
+        metrics["tool_policy"] = _policy_snapshot
     yield f"data: {json.dumps({'type': 'metrics', 'data': metrics})}\n\n"
 
     # Teacher-escalation: inline takeover visible in the chat stream.

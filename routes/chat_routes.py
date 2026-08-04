@@ -1881,6 +1881,19 @@ def setup_chat_routes(
         return StreamingResponse(agent_runs.subscribe(session_id), media_type="text/event-stream")
 
     # ------------------------------------------------------------------ #
+    # GET /api/chat/runs — discovery half of live observation (doc 008):
+    # list running/recent detached runs so a watcher can pick a session_id
+    # and attach to its full replay+live feed via /api/chat/resume. Admin-
+    # gated like workspace browsing: it enumerates activity across sessions.
+    # ------------------------------------------------------------------ #
+    @router.get("/api/chat/runs")
+    async def chat_runs(request: Request) -> Dict[str, Any]:
+        from src.tool_security import owner_is_admin_or_single_user
+        if not owner_is_admin_or_single_user(get_current_user(request)):
+            raise HTTPException(403, "Run listing is admin-only")
+        return {"runs": agent_runs.list_runs()}
+
+    # ------------------------------------------------------------------ #
     # POST /api/chat/stop — cancel a detached run (Stop button). Closing the SSE
     # no longer stops it (it's detached), so the Stop button must call this.
     # ------------------------------------------------------------------ #

@@ -85,6 +85,17 @@ def get_status(session_id: str) -> Optional[str]:
     return r.status if r else None
 
 
+def list_runs() -> list:
+    """All known runs (running + recently finished, pre-eviction) with their
+    status and buffered event count — the discovery half of live observation:
+    a watcher lists runs here, then subscribes via /api/chat/resume."""
+    return [
+        {"session_id": sid, "status": r.status, "events": len(r.buffer),
+         "subscribers": len(r.subscribers)}
+        for sid, r in _RUNS.items()
+    ]
+
+
 async def _drain(session_id: str, agen: AsyncGenerator[str, None],
                  prev_task: Optional[asyncio.Task] = None) -> None:
     """Pull every event from the wrapped generator into the run buffer, fanning
