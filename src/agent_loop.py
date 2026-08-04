@@ -3178,6 +3178,22 @@ async def _run_verifier_subagent(
     return _parse_verifier_response(raw)
 
 
+_COMMAND_SIGNAL_RE = re.compile(
+    r"\b(?:npm|npx|pnpm|yarn|pip3?|git|docker|make|cargo|node|python3?|pytest|uvicorn|"
+    r"bash|shell|terminal|mkdir|chmod|chown|curl|wget|tar|unzip|install|uninstall|"
+    r"reinstall|compile|rebuild)\b"
+    r"|(?<![\w.])(?:[\w.-]+/){1,}[\w.-]+"   # path-like tokens: a/b, a/b/c.txt
+    r"|`[^`\n]{2,80}`",                       # inline-code spans
+    re.IGNORECASE,
+)
+
+
+def _message_signals_commands(text: str) -> bool:
+    """Whether the user's message calls for shell/file tools: named commands,
+    package managers, or filesystem paths. Pure so it is unit-testable."""
+    return bool(_COMMAND_SIGNAL_RE.search(text or ""))
+
+
 def _is_reasoning_only_round(
     round_reasoning: str,
     visible_round_text: str,
@@ -3693,6 +3709,22 @@ async def stream_agent_loop(
             from src.tool_index import ALWAYS_AVAILABLE
             _relevant_tools = set(ALWAYS_AVAILABLE)
         _relevant_tools.update({"manage_documents", "edit_document"})
+
+    # A message that names commands, package managers, or filesystem paths
+    # needs the shell/file toolset — offer it regardless of what the intent
+    # classifier decided. Observed: "run npm install … edit vite.config.js …
+    # npm run build" classified as documents/settings/ui, got 56 tools
+    # including the whole browser suite but no bash/write_file, and the model
+    # truthfully reported it couldn't touch the filesystem. Selection is not
+    # permission: route-level disabled_tools still filters afterwards.
+    if not guide_only and _message_signals_commands(_last_user):
+        if _relevant_tools is None:
+            from src.tool_index import ALWAYS_AVAILABLE
+            _relevant_tools = set(ALWAYS_AVAILABLE)
+        _relevant_tools.update({
+            "bash", "python", "read_file", "write_file", "edit_file",
+            "ls", "grep", "glob",
+        })
 
     # Per-request forced tools are stronger than retrieval. Explicit search
     # settings make web tools visible even when tool RAG misses them;
