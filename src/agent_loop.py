@@ -3837,6 +3837,11 @@ async def stream_agent_loop(
         and "files" not in _intent_domains
         and not uploaded_files
         and not workspace
+        # "npm install ... edit vite.config.js ... npm run build" is a command
+        # request even when a document is open — this stripper silently undid
+        # the command-signal force-offer (terminal=False, disabled=[]: the
+        # third gate the [agent-policy] line was built to expose).
+        and not _message_signals_commands(_last_user)
     ):
         _doc_irrelevant_file_tools = {
             "append_file",
