@@ -74,3 +74,9 @@ also produced *incorrectly* against a real edit; after it the verifier sees
 - 2026-08-02 — UNMET-line parsing + accountability (`_verifier_fix_pending`).
 - 2026-08-03 — empty-response retry + gpt-oss effort fix (ba6522f5).
 - 2026-08-04 — effectful-only flag clearing (3917a9fa); diff in snapshot (0cf537a9).
+- 2026-08-04 — failed commands are LOUD in the snapshot ("!! FAILED (exit N)
+  — if never addressed afterwards, this requirement is UNMET"): a weak judge
+  passed a turn whose final command failed quietly ("(exit 13)" suffix) and
+  was never retried. Same commit: subprocess output is ANSI-stripped before
+  reaching model context/UI, and the bash tool descriptions state no TTY is
+  attached (interactive wizards fail; use --yes/--defaults).

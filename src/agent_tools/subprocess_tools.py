@@ -16,6 +16,23 @@ PROGRESS_TAIL_LINES = 12
 TMUX_CAPTURE_LINES = 2000
 
 
+# ANSI/VT escape sequences (colors, cursor moves, show/hide cursor) that CLIs
+# emit when they mistake the pipe for a terminal. They reach the model's
+# context and the chat UI as literal garbage ("[1m[36m[?25l..."), wasting
+# tokens and obscuring the real output — strip them from captured output.
+_ANSI_ESCAPE_RE = re.compile(
+    r"\x1b\[[0-9;?]*[ -/]*[@-~]"   # CSI sequences (colors, cursor control)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC sequences (titles, links)
+    r"|\x1b[@-Z\\-_]"              # two-byte escapes
+)
+
+
+def _strip_ansi(text: str) -> str:
+    if not text or "\x1b" not in text:
+        return text
+    return _ANSI_ESCAPE_RE.sub("", text)
+
+
 def _tmux_session_name(session_id: Optional[str]) -> str:
     raw = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(session_id or "default")).strip("-")
     return f"ody-agent-{raw[:80] or 'default'}"
@@ -297,8 +314,8 @@ class BashTool:
                     "stderr": _truncate(stderr, MAX_OUTPUT_CHARS),
                     "tmux_session": _tmux_session_name(str(session_id)),
                 }
-            output = stdout.rstrip()
-            err = stderr.rstrip()
+            output = _strip_ansi(stdout).rstrip()
+            err = _strip_ansi(stderr).rstrip()
             if err:
                 output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
             return {
@@ -321,8 +338,8 @@ class BashTool:
         )
         if timed_out:
             return {"error": f"bash: timed out after {DEFAULT_BASH_TIMEOUT}s — process killed", "exit_code": 124, "stdout": _truncate(stdout, MAX_OUTPUT_CHARS), "stderr": _truncate(stderr, MAX_OUTPUT_CHARS)}
-        output = stdout.rstrip()
-        err = stderr.rstrip()
+        output = _strip_ansi(stdout).rstrip()
+        err = _strip_ansi(stderr).rstrip()
         if err:
             output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
         output = _truncate(output, MAX_OUTPUT_CHARS)
@@ -349,8 +366,8 @@ class PythonTool:
         )
         if timed_out:
             return {"error": f"python: timed out after {DEFAULT_PYTHON_TIMEOUT}s — process killed", "exit_code": 124, "stdout": _truncate(stdout, MAX_OUTPUT_CHARS), "stderr": _truncate(stderr, MAX_OUTPUT_CHARS)}
-        output = stdout.rstrip()
-        err = stderr.rstrip()
+        output = _strip_ansi(stdout).rstrip()
+        err = _strip_ansi(stderr).rstrip()
         if err:
             output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
         output = _truncate(output, MAX_OUTPUT_CHARS)

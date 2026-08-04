@@ -3062,7 +3062,10 @@ def _build_actions_snapshot(tool_events: list, limit: int = 8000) -> str:
         out = (ev.get("output") or "").strip()
         rc = ev.get("exit_code")
         head = f"[{tool}] {cmd}" if cmd else f"[{tool}]"
-        rc_s = f" (exit {rc})" if rc not in (None, 0) else ""
+        # A weak judge skims — an unaddressed failure must be unmissable, not
+        # a quiet "(exit 13)" suffix (observed: verifier passed a turn whose
+        # last command failed and was never retried).
+        rc_s = f"\n!! FAILED (exit {rc}) — if never addressed afterwards, this requirement is UNMET" if rc not in (None, 0) else ""
         body = (out[:1200] + " …") if len(out) > 1200 else (out or "(no output)")
         parts.append(f"{head}{rc_s}\n-> {body}")
         # Show the verifier WHAT changed, not just that an edit ran. Without
