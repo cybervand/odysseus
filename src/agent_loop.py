@@ -3181,7 +3181,7 @@ async def _run_verifier_subagent(
 _COMMAND_SIGNAL_RE = re.compile(
     r"\b(?:npm|npx|pnpm|yarn|pip3?|git|docker|make|cargo|node|python3?|pytest|uvicorn|"
     r"bash|shell|terminal|mkdir|chmod|chown|curl|wget|tar|unzip|install|uninstall|"
-    r"reinstall|compile|rebuild)\b"
+    r"reinstall|compile|rebuild|run|rerun|retry|execute|build|serve|launch|deploy)\b"
     r"|(?<![\w.])(?:[\w.-]+/){1,}[\w.-]+"   # path-like tokens: a/b, a/b/c.txt
     r"|`[^`\n]{2,80}`",                       # inline-code spans
     re.IGNORECASE,

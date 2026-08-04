@@ -24,7 +24,9 @@ def test_path_like_tokens_signal():
 
 def test_command_words_signal():
     for m in ("pip install requests", "git status?", "run pytest for me",
-              "docker restart the thing", "mkdir a folder called x"):
+              "docker restart the thing", "mkdir a folder called x",
+              "run it then", "just build it", "execute the script",
+              "retry", "deploy it"):
         assert _message_signals_commands(m), m
 
 
