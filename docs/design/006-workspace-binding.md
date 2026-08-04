@@ -49,3 +49,9 @@ the manual flow proves annoying in practice — it may not.
 
 - 2026-08-04 — documented upstream design + container caveat; extension
   proposed, deliberately deferred.
+- 2026-08-04 — relative paths anchor at `agent_cwd()` in the no-workspace
+  resolver (eb0bb550). They resolved against the server process cwd, so
+  bash and the file tools disagreed about the same path — bash created
+  `hammer-hub/` while `ls hammer-hub` was "outside the allowed roots", and
+  the model stopped to ask for a workspace. Same disease family as the
+  python `-I` fix: two tools, two environments, one confused model.
