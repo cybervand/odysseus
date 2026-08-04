@@ -57,8 +57,20 @@ Runner: `/tmp/gauntlet.sh` (server) → CSV. Results below per run.
 
 ## Results log
 
-- 2026-08-04 — first run: qwen3.5:9b, gemma3:latest, gemma4:12b (results
-  appended when complete).
+- 2026-08-04 — first run (tier 1):
+  - **qwen3.5:9b — PASS.** 8 tools, 0 dialect failures, both files real
+    (915B + 272B). Flawless.
+  - **gemma4:12b — PASS.** 4 tools, 0 failures, both files real (622B +
+    156B), self-verified with ls+head before claiming done. Textbook.
+  - **gemma3:latest — N/A by policy, diagnosed from metadata alone:** the
+    persisted tool_policy shows every effectful tool in `disabled`
+    (bash, write_file, python, ... — model-capability blocklist); the
+    model then produced an empty response. First failure ever diagnosed
+    purely from the doc-008 policy record — zero log digging. Follow-up:
+    the user-facing message should say "this model has no tool access"
+    instead of "empty response, try another model".
+  - Verifier column read "none" for all three — check whether the
+    completion verifier fired on these API-token turns (setting scope?).
 
 ## Open items
 
