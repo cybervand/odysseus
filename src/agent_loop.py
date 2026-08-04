@@ -3188,6 +3188,11 @@ _COMMAND_SIGNAL_RE = re.compile(
 )
 
 
+# Text-dialect families that fabricate tool results (screenplay habit) —
+# they get the turn-taking protocol note each turn (doc 012).
+_DIALECT_TURN_NOTE_MODELS = ("glm4", "glm-4", "hermes", "deepseek-r1", "mistral-nemo", "command-r")
+
+
 def _message_signals_commands(text: str) -> bool:
     """Whether the user's message calls for shell/file tools: named commands,
     package managers, or filesystem paths. Pure so it is unit-testable."""
@@ -3378,6 +3383,25 @@ async def stream_agent_loop(
             f"[agent] library manifest injected: {len(_session_docs)} session doc(s), "
             f"{len(_library_docs)} from other chats"
         )
+
+    # Doc 012: turn-taking note for text-dialect models. These families were
+    # never trained to stop-and-wait after a tool call — they write the whole
+    # screenplay including the world's lines (glm4 fabricated ls output
+    # BEFORE the real result arrived, rematch 21831). One explicit rule
+    # converts screenplay habit into turn-taking.
+    if any(k in (model or "").lower() for k in _DIALECT_TURN_NOTE_MODELS):
+        messages = _insert_before_latest_user(messages, {
+            "role": "system",
+            "content": (
+                "Tool protocol for this session: to act, emit exactly ONE tool "
+                "invocation and then END your reply immediately. NEVER write, "
+                "predict, or summarize a tool's output yourself — the system "
+                "executes the call and returns the REAL output to you in the "
+                "next turn. Then emit the next single invocation. One call per "
+                "reply, no imagined results."
+            ),
+        })
+        logger.info("[agent] dialect turn-taking note injected")
 
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
