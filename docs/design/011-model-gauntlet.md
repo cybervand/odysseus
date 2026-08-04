@@ -72,6 +72,26 @@ Runner: `/tmp/gauntlet.sh` (server) → CSV. Results below per run.
   - Verifier column read "none" for all three — check whether the
     completion verifier fired on these API-token turns (setting scope?).
 
+- 2026-08-04 — round 2 (nine pulled dialects, tier 1):
+  - **granite4:3b — PASS** (5 tools, both files real, 336B+385B). A 2.1GB
+    model beat five models 3× its size: dialect fit beats parameter count.
+  - **mistral-nemo:12b — FAIL (honest):** 1 tool call, no files, and the
+    verifier FAILED it — the only verifier verdict of the round.
+  - **llama3.1:8b — zero, but innocent:** emitted a PERFECT call as bare
+    JSON text ({"name": "write_file", "parameters": {...}}); nothing
+    parsed it. Policy record: terminal=True, 49 tools sent — not a gate.
+    → Fixed same day: dialect pattern 3d (902dc787).
+  - **hermes3:8b, deepseek-r1:14b — zero:** both emitted fenced ```bash
+    blocks (deepseek with heredocs) — the fenced-text protocol Odysseus
+    itself used pre-native-tools. Fix direction: fenced-fallback when a
+    native turn yields 0 calls but content has executable fences.
+  - **command-r7b — zero:** pure prose planning, no call syntax; needs a
+    cohere profile or N/A grade.
+  - **llama3.2:3b, glm4:9b, phi4:14b — zero;** transcripts pending
+    autopsy (suspected same JSON/fenced dialects).
+  - Meta: every zero had terminal=True + full toolbox per policy records
+    — round 2's failures are 100% dialect, 0% gates. Doc 009 vindicated.
+
 ## Open items
 
 - Pull-and-test the remaining nine dialects.
