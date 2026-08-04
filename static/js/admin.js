@@ -2466,6 +2466,7 @@ function initRag() {
 // Catalog mirrors the one in settings.js integration form. Keep keys in
 // sync with the backend scope allowlist.
 const _TOKEN_SCOPES = [
+  { key: 'observe',           label: 'Observe',           detail: 'Read-only: list agent runs and watch their live feeds (admin-owned tokens only)' },
   { key: 'todos:read',        label: 'Todos read',        detail: 'Read notes and checklists' },
   { key: 'todos:write',       label: 'Todos write',       detail: 'Create, update, delete, and toggle todo items' },
   { key: 'documents:read',    label: 'Documents read',    detail: 'Read documents when a document API is enabled' },

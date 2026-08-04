@@ -14,6 +14,10 @@ MAX_NAME_LEN = 100
 DEFAULT_SCOPES = "chat"
 ALLOWED_SCOPES = {
     "chat",
+    # Read-only live observation (design doc 008): list agent runs and attach
+    # to their replay+live SSE feeds. Grants no write access to anything.
+    # Honored only when the token's OWNER is an admin/single user.
+    "observe",
     "todos:read",
     "todos:write",
     "documents:read",

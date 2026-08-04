@@ -1869,13 +1869,26 @@ def setup_chat_routes(
         agent_runs.start(session, _safe_stream())
         return StreamingResponse(agent_runs.subscribe(session), media_type="text/event-stream")
 
+    def _observer_allowed(request: Request) -> bool:
+        """Admin browser session, or an API token carrying the read-only
+        `observe` scope whose OWNER is an admin/single user. Tokens never
+        inherit admin implicitly (require_user forbids them); this is the
+        explicit, scoped grant for watching runs (design doc 008)."""
+        from src.auth_helpers import _is_api_token_request
+        from src.tool_security import owner_is_admin_or_single_user
+        if _is_api_token_request(request):
+            scopes = getattr(request.state, "api_token_scopes", None) or []
+            return "observe" in scopes and owner_is_admin_or_single_user(effective_user(request))
+        return owner_is_admin_or_single_user(get_current_user(request))
+
     # ------------------------------------------------------------------ #
     # GET /api/chat/resume — reconnect to a detached run that's still going
     # (e.g. after reopening a session whose agent kept running in the background)
     # ------------------------------------------------------------------ #
     @router.get("/api/chat/resume/{session_id}")
     async def chat_resume(request: Request, session_id: str) -> StreamingResponse:
-        _verify_session_owner(request, session_id)
+        if not _observer_allowed(request):
+            _verify_session_owner(request, session_id)
         if not agent_runs.is_active(session_id):
             raise HTTPException(404, "No active run for this session")
         return StreamingResponse(agent_runs.subscribe(session_id), media_type="text/event-stream")
@@ -1883,14 +1896,13 @@ def setup_chat_routes(
     # ------------------------------------------------------------------ #
     # GET /api/chat/runs — discovery half of live observation (doc 008):
     # list running/recent detached runs so a watcher can pick a session_id
-    # and attach to its full replay+live feed via /api/chat/resume. Admin-
-    # gated like workspace browsing: it enumerates activity across sessions.
+    # and attach to its full replay+live feed via /api/chat/resume. Gated
+    # to admins or observe-scoped tokens: it enumerates cross-session activity.
     # ------------------------------------------------------------------ #
     @router.get("/api/chat/runs")
     async def chat_runs(request: Request) -> Dict[str, Any]:
-        from src.tool_security import owner_is_admin_or_single_user
-        if not owner_is_admin_or_single_user(get_current_user(request)):
-            raise HTTPException(403, "Run listing is admin-only")
+        if not _observer_allowed(request):
+            raise HTTPException(403, "Run listing needs an admin session or an observe-scoped token")
         return {"runs": agent_runs.list_runs()}
 
     # ------------------------------------------------------------------ #

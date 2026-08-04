@@ -5233,6 +5233,7 @@ async function initUnifiedIntegrations() {
     } catch (_) {}
 
     const toolScopes = [
+      { key: 'observe', label: 'Observe', detail: 'Read-only: list agent runs and watch their live feeds (admin-owned tokens only)' },
       { key: 'todos:read', label: 'Todos', detail: 'Read notes and checklists' },
       { key: 'todos:write', label: 'Todos write', detail: 'Create, update, delete, and toggle todo items' },
       { key: 'documents:read', label: 'Documents', detail: 'Read documents when a document API is enabled' },
