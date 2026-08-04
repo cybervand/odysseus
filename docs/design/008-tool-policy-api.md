@@ -63,3 +63,16 @@ non-admin block) so the answer to "who turned this off" is in the record.
 - 2026-08-04 — drafted from the allow_bash incident (bash silently off via
   composer toggle; no log, no UI, no model awareness — three components
   honest, one switch invisible).
+- 2026-08-04 — phase 1 shipped: [agent-policy] log line (4b5f9839). First
+  read exonerated the composer toggle and exposed the doc-mode stripper
+  (the "third gate") in one grep.
+- 2026-08-04 — phases 2-4 shipped (d7b5fb74, 84af3136): snapshot rides
+  metrics into chat_messages.metadata.tool_policy; streams once as a
+  tool_policy SSE event; agent_runs.list_runs() + admin GET
+  /api/chat/runs for run discovery; scripts/watch_agent.sh attaches to
+  the replay+live feed via /api/chat/resume with ody_ token or password
+  auth. Observation now goes through the app's own API — thinking deltas
+  included, which container logs never carried. Still open: UI chips for
+  the tool_policy event; injecting policy DELTAS into model context
+  ("terminal is NOW available") to break stale self-narrative anchoring;
+  memory extractor must never memorize capability claims.
