@@ -172,6 +172,13 @@ def _resolve_tool_path(raw_path: str) -> str:
     if raw_path is None or not str(raw_path).strip():
         raise ValueError("path is required")
     expanded = os.path.expanduser(str(raw_path).strip())
+    if not os.path.isabs(expanded):
+        # Anchor relative paths where bash subprocesses run (agent_cwd — the
+        # data dir when no workspace is bound). realpath alone resolved them
+        # against the SERVER PROCESS cwd, so the same relative path meant
+        # different places in different tools: bash could `mkdir hammer-hub`
+        # while `ls hammer-hub` was "outside the allowed roots".
+        expanded = os.path.join(agent_cwd(), expanded)
     resolved = os.path.realpath(expanded)
 
     if _is_sensitive_path(resolved):
