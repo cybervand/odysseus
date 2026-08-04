@@ -27,3 +27,4 @@ why — read them before re-litigating or extending an area.
 | [005](005-document-diff-pipeline.md) | Document diff pipeline (chip, editor review, verifier) | Shipped |
 | [006](006-workspace-binding.md) | Workspace selection and confinement | Upstream design documented; extension proposed |
 | [007](007-deployment-runbook.md) | copperwarehouse deployment runbook | Living document |
+| [008](008-tool-policy-api.md) | Per-turn tool policy: record, expose, tell the model | Draft — next build |
