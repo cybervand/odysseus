@@ -28,17 +28,37 @@ else
   AUTH=(-b "$JAR")
 fi
 
-SID="${1:-}"
-if [ -z "$SID" ]; then
-  echo "[watch] polling for a running session..." >&2
-  while [ -z "$SID" ]; do
-    SID=$(curl -s "${AUTH[@]}" "$ODY_URL/api/chat/runs" \
-      | python3 -c 'import json,sys; runs=[r for r in json.load(sys.stdin).get("runs",[]) if r["status"]=="running"]; print(runs[0]["session_id"] if runs else "")' 2>/dev/null)
-    [ -z "$SID" ] && sleep 2
-  done
+# Explicit session: single-shot attach (old behavior).
+if [ -n "${1:-}" ]; then
+  echo "[watch] attaching to $1 -> $OUT" >&2
+  curl -s -N "${AUTH[@]}" "$ODY_URL/api/chat/resume/$1" >> "$OUT"
+  echo "[watch] stream ended for $1" >&2
+  exit 0
 fi
 
-echo "[watch] attaching to $SID -> $OUT" >&2
-# Replay + live; -N disables buffering so events land as they happen.
-curl -s -N "${AUTH[@]}" "$ODY_URL/api/chat/resume/$SID" >> "$OUT"
-echo "[watch] stream ended for $SID" >&2
+# Continuous mode: run forever. Prefer LIVE runs; also replay finished runs
+# still in the retention buffer that we haven't captured (a short turn that
+# ends between polls is not lost). SEEN prevents duplicate replays; a session
+# that runs AGAIN gets a fresh run object and is re-captured live.
+SEEN="${SEEN:-$OUT.seen}"
+touch "$SEEN"
+echo "[watch] continuous mode -> $OUT (seen: $SEEN)" >&2
+while true; do
+  SID=$(curl -s "${AUTH[@]}" "$ODY_URL/api/chat/runs" | SEEN="$SEEN" python3 -c '
+import json, os, sys
+try:
+    runs = json.load(sys.stdin).get("runs", [])
+except Exception:
+    runs = []
+seen = set(open(os.environ["SEEN"]).read().split())
+running = [r for r in runs if r["status"] == "running"]
+done = [r for r in runs if r["status"] != "running" and r["session_id"] not in seen]
+pick = running or done
+print(pick[0]["session_id"] if pick else "")' 2>/dev/null)
+  if [ -z "$SID" ]; then sleep 2; continue; fi
+  echo "[watch] attaching to $SID" >&2
+  printf "\n: ==== run %s @ %s ====\n\n" "$SID" "$(date -Iseconds)" >> "$OUT"
+  curl -s -N "${AUTH[@]}" "$ODY_URL/api/chat/resume/$SID" >> "$OUT"
+  echo "$SID" >> "$SEEN"
+  echo "[watch] stream ended for $SID" >&2
+done

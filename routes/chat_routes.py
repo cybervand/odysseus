@@ -1887,10 +1887,16 @@ def setup_chat_routes(
     # ------------------------------------------------------------------ #
     @router.get("/api/chat/resume/{session_id}")
     async def chat_resume(request: Request, session_id: str) -> StreamingResponse:
-        if not _observer_allowed(request):
+        if _observer_allowed(request):
+            # Observers may also replay a just-finished run from its retained
+            # buffer — a short turn that ends between watcher polls would
+            # otherwise be lost despite the buffer still existing.
+            if agent_runs.get_status(session_id) is None:
+                raise HTTPException(404, "No run (active or buffered) for this session")
+        else:
             _verify_session_owner(request, session_id)
-        if not agent_runs.is_active(session_id):
-            raise HTTPException(404, "No active run for this session")
+            if not agent_runs.is_active(session_id):
+                raise HTTPException(404, "No active run for this session")
         return StreamingResponse(agent_runs.subscribe(session_id), media_type="text/event-stream")
 
     # ------------------------------------------------------------------ #
