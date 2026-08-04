@@ -1277,6 +1277,9 @@ def _iter_xml_direct(text):
     return _iter_backref_blocks(text, _XML_DIRECT_OPEN_RE, _XML_DIRECT_CLOSE_ANY_RE, ci=True)
 
 
+_LLAMA_JSON_CALL_RE = re.compile(r'\{\s*"name"\s*:\s*"[a-zA-Z_][\w-]*"')
+
+
 def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
     """Extract executable tool blocks from LLM response text.
 
@@ -1407,6 +1410,30 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
     if not blocks:
         for fn_name, fn_body in _iter_qwen_function(text):
             block = _parse_qwen_function(fn_name, fn_body)
+            if block:
+                blocks.append(block)
+
+    # Pattern 3d: bare llama3-JSON tool calls in content —
+    # {"name": "write_file", "parameters": {...}} (or "arguments"). The
+    # llama3_json dialect emits these as plain text when the backend doesn't
+    # wrap them natively; gauntlet run 2 caught llama3.1:8b producing a
+    # perfect call this way and scoring zero. raw_decode handles brace
+    # balancing, so JSON containing HTML/code payloads parses correctly.
+    if not blocks:
+        for m in _LLAMA_JSON_CALL_RE.finditer(text):
+            try:
+                obj, _end = json.JSONDecoder().raw_decode(text, m.start())
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(obj, dict):
+                continue
+            _args = obj.get("parameters")
+            if not isinstance(_args, dict):
+                _args = obj.get("arguments")
+            if not obj.get("name") or not isinstance(_args, dict):
+                continue
+            from src.tool_schemas import function_call_to_tool_block
+            block = function_call_to_tool_block(str(obj["name"]), json.dumps(_args))
             if block:
                 blocks.append(block)
 
