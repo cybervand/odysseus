@@ -1469,11 +1469,16 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
                     i = j + 1
                     continue
             elif tool == "write_file" and rest.startswith('"'):
-                qm = re.match(r'"([^"]+)"\s+"(.*)', rest, re.S)
+                # Two observed arg shapes: `"path" "content..."` (probe) and
+                # the function-call variant `"path"("content...")` (rematch
+                # 24158 — where the dropped writes sent glm4 into seven rounds
+                # of debugging a void the parser created).
+                qm = re.match(r'"([^"]+)"\s*(\()?\s*"(.*)', rest, re.S)
                 if qm:
                     path = qm.group(1)
-                    remainder = qm.group(2) + "\n" + "\n".join(lines[i + 1:])
-                    endq = remainder.rfind('"')
+                    paren = bool(qm.group(2))
+                    remainder = qm.group(3) + "\n" + "\n".join(lines[i + 1:])
+                    endq = remainder.rfind('")') if paren else remainder.rfind('"')
                     content_body = remainder[:endq] if endq != -1 else remainder
                     from src.tool_schemas import function_call_to_tool_block
                     block = function_call_to_tool_block(

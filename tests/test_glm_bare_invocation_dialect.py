@@ -36,6 +36,21 @@ def test_gauntlet_write_file_specimen():
     assert "Copper Warehouse Coffee" in wf.content
 
 
+def test_rematch_paren_call_specimen():
+    # Verbatim shape from rematch run 24158: write_file "path"("content")
+    text = (
+        'bash\nmkdir -p coffee_glm4-9b_24158\n'
+        'write_file "coffee_glm4-9b_24158/index.html"("<html><head><title>Copper Warehouse Coffee'
+        '</title></head><body><h1>Copper Warehouse Coffee</h1></body></html>")'
+    )
+    blocks = parse_tool_blocks(text)
+    types = [b.tool_type for b in blocks]
+    assert "bash" in types and "write_file" in types
+    wf = next(b for b in blocks if b.tool_type == "write_file")
+    assert wf.content.startswith("coffee_glm4-9b_24158/index.html\n")
+    assert wf.content.rstrip().endswith("</html>")
+
+
 def test_prose_mentioning_tools_is_not_parsed():
     assert parse_tool_blocks("I could use bash for this, or maybe write_file later.") == []
     assert parse_tool_blocks("The bash tool is great.") == []
