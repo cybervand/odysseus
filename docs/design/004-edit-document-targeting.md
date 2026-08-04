@@ -73,3 +73,8 @@ unique-text miss retargeted with note.
   shader once (restored via the version-history endpoint). suggest_document
   still untargeted — lower risk (it never writes), do with open item 2
   (e0c365d2).
+- 2026-08-04 — tool cards state the ground-truth target (1322d44e).
+  Principle (user's, and correct): WHICH document a tool touched is harness
+  truth from the tool result, never model narration. Card header shows an
+  always-visible "→ <title>"; update_document's header previously showed the
+  model's own first content line while the rewrite hit a different document.
