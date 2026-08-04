@@ -4231,6 +4231,17 @@ async def stream_agent_loop(
 
         _tool_names_sent = [t.get("function", {}).get("name") for t in (all_tool_schemas or []) if t.get("function")]
         logger.info(f"[agent-debug] round={round_num} model={model} _is_api_model={_is_api_model} tools_sent={len(_tool_names_sent)} tool_names={_tool_names_sent[:15]} relevant_tools={sorted(_relevant_tools)[:15] if _relevant_tools else 'ALL'}")
+        # Phase 1 of design doc 008: the per-turn policy must be readable, not
+        # inferred — which gate removed a tool has been argued about three
+        # times too many. terminal/web reflect the EFFECTIVE state after all
+        # gates (route toggles, admin policy, plan mode, model blocklists).
+        logger.info(
+            f"[agent-policy] terminal={'bash' in _tool_names_sent} "
+            f"web_search={'web_search' in _tool_names_sent} "
+            f"workspace={workspace or None} "
+            f"disabled={sorted(disabled_tools)[:12] if disabled_tools else []} "
+            f"forced={sorted(forced_tools)[:8] if forced_tools else []}"
+        )
 
         # Primary target + any configured fallback models. stream_llm_with_fallback
         # only switches on a pre-content failure, so streamed output is never
