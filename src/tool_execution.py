@@ -767,7 +767,12 @@ async def _execute_tool_block_impl(
         desc = f"{tool}: {content.split(chr(10))[0][:80]}"
         result = await _document_tool_dispatch(tool, content, session_id, owner) \
             or {"error": f"{tool}: execution failed", "exit_code": 1}
-        if tool in ("edit_document", "suggest_document") and "title" in (result or {}):
+        # The card header must state the GROUND-TRUTH target from the result,
+        # never the model's own content line — update_document's header used
+        # to read as whatever comment the model wrote first, while the rewrite
+        # landed on a different document entirely.
+        if tool in ("create_document", "update_document", "edit_document", "suggest_document") \
+                and "title" in (result or {}):
             desc = f"{tool}: {result.get('title', '')}"
     elif tool == "search_chats":
         query = content.split("\n")[0].strip()

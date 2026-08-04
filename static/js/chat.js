@@ -3175,6 +3175,14 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
                   // For file edits the "command" is the raw JSON args — redundant
                   // next to the diff, so hide it when we have a diff to show.
                   const cmdHtml2 = (cmd && !(json.diff && json.diff.text)) ? `<pre class="agent-thread-cmd">${esc(cmd)}</pre>` : '';
+                  // Ground truth of WHICH document a doc tool touched — from the
+                  // tool result, never the model's narration. Clickable to open.
+                  let docTargetHtml = '';
+                  if (json.doc_id && json.document_title) {
+                    const act = ({create: 'created', update: 'rewrote', edit: 'edited', suggest: 'suggested on'})[json.document_action] || json.document_action || 'touched';
+                    const ver = json.document_version ? ` <span class="doc-target-ver">v${esc(String(json.document_version))}</span>` : '';
+                    docTargetHtml = `<div class="agent-thread-doc-target">${esc(act)} <a href="#document-${esc(json.doc_id)}">${esc(json.document_title)}</a>${ver}</div>`;
+                  }
                   // Preserve the user's .open choice across the innerHTML
                   // rewrite \u2014 otherwise expanding a running tool collapses
                   // it as soon as the result lands, forcing the user to
@@ -3182,7 +3190,9 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
                   // bottom of file) so no per-node listener needed.
                   const _wasOpen = currentToolBubble.classList.contains('open');
                   currentToolBubble.className = 'agent-thread-node' + (ok ? '' : ' error') + (_wasOpen ? ' open' : '');
-                  currentToolBubble.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(json.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${cmdHtml2}${outHtml}${diffHtml}</div>`;
+                  const docHeaderHtml = (json.doc_id && json.document_title)
+                    ? `<span class="agent-thread-doc">\u2192 ${esc(json.document_title)}</span>` : '';
+                  currentToolBubble.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(json.tool)}</span>${docHeaderHtml}<span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${docTargetHtml}${cmdHtml2}${outHtml}${diffHtml}</div>`;
                   // Reset so thinking spinner between tools says "Thinking" not the old tool's label
                   _lastToolName = '';
                   uiModule.scrollHistory();

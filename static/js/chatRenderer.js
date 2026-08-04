@@ -2420,7 +2420,12 @@ export function addMessage(role, content, modelName, metadata) {
             node.className = 'agent-thread-node' + (ok ? '' : ' error');
             // Hide the raw JSON command when a diff says it better (same as live).
             const evCmdHtml = (ev.command && !(ev.diff && ev.diff.text)) ? `<pre class="agent-thread-cmd">${esc(ev.command)}</pre>` : '';
-            node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(ev.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${evCmdHtml}${outHtml}${evDiffHtml}</div>`;
+            // Ground truth of WHICH document was touched (same as live path).
+            const evDocHeader = (ev.doc_id && ev.doc_title)
+              ? `<span class="agent-thread-doc">\u2192 ${esc(ev.doc_title)}</span>` : '';
+            const evDocTarget = (ev.doc_id && ev.doc_title)
+              ? `<div class="agent-thread-doc-target"><a href="#document-${esc(ev.doc_id)}">${esc(ev.doc_title)}</a></div>` : '';
+            node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(ev.tool)}</span>${evDocHeader}<span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${evDocTarget}${evCmdHtml}${outHtml}${evDiffHtml}</div>`;
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);
           }

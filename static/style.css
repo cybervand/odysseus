@@ -9827,6 +9827,25 @@ body.fullwidth-chat .chat-history {
   font-size: 0.85em;
   opacity: 0.5;
 }
+/* Ground-truth target of a document tool — always visible in the header. */
+.agent-thread-doc {
+  font-size: 0.85em;
+  color: var(--fg);
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.agent-thread-doc-target {
+  font-size: 0.85em;
+  margin: 2px 0 4px;
+}
+.agent-thread-doc-target a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--fg) 35%, transparent);
+}
 .agent-thread-chevron {
   font-size: 0.7em;
   transition: transform 0.2s ease;
