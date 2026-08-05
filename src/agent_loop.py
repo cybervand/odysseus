@@ -3483,7 +3483,15 @@ async def stream_agent_loop(
                     f"Working directory: {_cwd} — relative paths resolve here, "
                     "the shell starts here, and project folders you created "
                     "live directly inside it. Never infer your location from "
-                    "log paths in error output."
+                    "log paths in error output. Everything under this "
+                    "directory is instantly viewable in the user's browser at "
+                    "/preview/<path relative to the working directory>. When "
+                    "you finish a webpage, end your reply with a markdown "
+                    "link to it, e.g. [view the site](/preview/yourfolder/) — "
+                    "RELATIVE URL only, never invent a host or port; the "
+                    "browser resolves it wherever the user is. Built sites "
+                    "must use relative asset paths (vite: base './') or they "
+                    "render blank from the preview path."
                 ),
             })
 

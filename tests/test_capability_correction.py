@@ -58,3 +58,15 @@ def test_shell_disabled_phrasing_triggers():
     assert al._needs_capability_correction(
         _msgs("Unfortunately the shell is disabled in this session."), set()
     )
+
+
+def test_cwd_line_teaches_preview_and_relative_links():
+    """The working-directory context line must teach the preview mapping with
+    RELATIVE links (host-agnostic: resolves to localhost or the LAN IP,
+    wherever the user's browser is) and the relative-asset-paths lesson
+    (gpt-oss's build rendered blank from /preview/ without base './')."""
+    import pathlib
+    src = pathlib.Path(al.__file__).read_text(encoding="utf-8")
+    assert "/preview/<path relative to the working directory>" in src
+    assert "RELATIVE URL only, never invent a host or port" in src
+    assert "base './'" in src
