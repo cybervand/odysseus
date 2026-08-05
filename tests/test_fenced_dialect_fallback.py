@@ -151,7 +151,8 @@ def test_deepseek_turn_note_examples_parse_via_pattern_3d():
     # through our own chain — in the PRIMARY (skip_fenced) pass, since bare
     # JSON needs no fallback. If someone edits the note into an unparseable
     # shape, this fails before any rematch has to discover it.
-    blocks = parse_tool_blocks(al._DEEPSEEK_TURN_NOTE, skip_fenced=True)
+    from src.dialect_profiles import _DEEPSEEK_TURN_NOTE
+    blocks = parse_tool_blocks(_DEEPSEEK_TURN_NOTE, skip_fenced=True)
     assert [b.tool_type for b in blocks] == ["bash", "write_file"]
     assert "mkdir -p myfolder" in blocks[0].content
     assert blocks[1].content.startswith("myfolder/file.txt")

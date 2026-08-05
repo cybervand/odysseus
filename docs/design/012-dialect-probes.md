@@ -67,3 +67,28 @@ pattern? raw markup shape?
     variance dominates. Not a parser problem anymore. Revisit with a
     larger GLM or a stronger judge; every fix built for it stays and
     serves the fleet.
+- 2026-08-05 — deepseek-r1 arc (fenced-fallback campaign):
+  1. Fenced fallback shipped (fencedfb): rematch 1 = dir yes, 10 tools,
+     0 files. First real deepseek directory EVER. Autopsy: ONE bash fence
+     interleaving mkdir with `write_file <path> -- <<EOL` pseudo-commands
+     (exit 127 as shell); model correctly diagnosed its own failure for 7
+     rounds, then fled to create_document.
+  2. Heredoc splitter shipped (fencedfb2): rematch 2 = dir yes, 16 tools,
+     0 files — splitter unexercised: the model emitted NO heredocs this
+     run, improvised create_document in round 1 instead. Serialization
+     roulette confirmed.
+  3. RESEARCH (the missing piece): R1 distills were never trained on
+     function calling (0528 refresh never reached the 14b registry tag),
+     and the Ollama registry template renders tool CALLS (DSML tokens)
+     but never the tool DEFINITIONS — the model NEVER SEES THE SCHEMAS
+     (ollama#8517, #10935, #11131). Its only tool knowledge is our prose
+     system prompt → per-run improvisation is the expected outcome, not a
+     quirk. Community-proven anchor (MFDoom template): bare-JSON
+     {name, parameters} — exactly Pattern 3d, parsed in the PRIMARY pass.
+  4. Few-shot bare-JSON turn-note shipped → rematch 3 pending.
+- 2026-08-05 — REGISTRY: src/dialect_profiles.py is now THE index (doc
+  009 "profiles as data" delivered). Turn notes, fenced-fallback flags,
+  pattern assignments, and diagnosed-only families all live in one
+  declarative table; agent_loop consumes it; tests enforce that every
+  note's examples parse through our own chain and diagnosed rows carry
+  no runtime behavior.

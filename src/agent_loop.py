@@ -3208,39 +3208,13 @@ _COMMAND_SIGNAL_RE = re.compile(
 # create_document. Lesson: dialects are prompt-sensitive; the note must
 # FEW-SHOT the exact parseable shapes (v2 below), never describe abstractly.
 # v2 scope: glm only until validated — one variable, one model.
-_DIALECT_TURN_NOTE_MODELS = ("glm4", "glm-4")
-
-# DeepSeek-R1 distills were never trained on function calling and the Ollama
-# registry template renders tool CALLS (DSML tokens) but never the tool
-# DEFINITIONS — the model literally never sees the schemas, so it improvises
-# a different serialization every run (bash-fence write_file heredocs one
-# run, create_document escape the next; ollama/ollama#8517, #10935). The
-# community-proven anchor (MFDoom tool-calling template) is the bare-JSON
-# shape — which Pattern 3d already parses in the PRIMARY pass, no fallback
-# needed. Few-shot it, per the doc 012 v1 lesson: exact shapes, never
-# abstract descriptions.
-_DEEPSEEK_TURN_NOTE = (
-    "To use a tool, reply with ONE JSON call EXACTLY like these examples, "
-    "then end your reply:\n\n"
-    '{"name": "bash", "parameters": {"command": "mkdir -p myfolder"}}\n\n'
-    '{"name": "write_file", "parameters": {"path": "myfolder/file.txt", '
-    '"content": "the complete file content here"}}\n\n'
-    "One tool call per reply, as plain text after your thinking — no code "
-    "fences, no shell commands named write_file. After your reply ends, the "
-    "system executes the call and sends you the REAL output — never write "
-    "or predict a tool's output yourself. When the task is complete and "
-    "verified, reply with a short summary and no tool call."
+# Per-model-family dialect adaptations (turn notes, fenced fallback, pattern
+# index) live in src/dialect_profiles.py — doc 009 "profiles as data". Do not
+# add per-model tool-calling constants here; add a profile there.
+from src.dialect_profiles import (  # noqa: E402
+    fenced_fallback_for as _dialect_fenced_fallback_for,
+    profile_for as _dialect_profile_for,
 )
-
-# Fenced-dialect families (doc 012): served with native tools attached, yet
-# their real calls come out as ```bash fences in prose (deepseek-r1 heredocs,
-# hermes3). For these, a turn with ZERO native calls and zero textual-markup
-# blocks gets ONE re-parse with fences enabled — a bare fence from them is an
-# attempted call, not an illustration. Everyone else keeps the #3222 guard
-# (native models' fences are examples). Deliberately does NOT match native
-# DeepSeek-V/chat API models.
-_FENCED_DIALECT_MODELS = ("deepseek-r1", "hermes3", "hermes-3")
-
 
 def _message_signals_commands(text: str) -> bool:
     """Whether the user's message calls for shell/file tools: named commands,
@@ -3438,30 +3412,15 @@ async def stream_agent_loop(
     # (glm4 fabricated ls output before the real result arrived). v1's
     # abstract wording destabilized the emission dialect itself; v2 shows the
     # exact parseable shapes so it anchors the dialect AND teaches the pause.
-    _mlower = (model or "").lower()
-    if any(k in _mlower for k in _DIALECT_TURN_NOTE_MODELS):
+    _dialect_profile = _dialect_profile_for(model)
+    if _dialect_profile and _dialect_profile.turn_note:
         messages = _insert_before_latest_user(messages, {
             "role": "system",
-            "content": (
-                "To use a tool, write the call EXACTLY like these examples, "
-                "then end your reply:\n\n"
-                "bash\nmkdir -p myfolder\n\n"
-                "or:\n\n"
-                'write_file "myfolder/file.txt" "the complete file content here"\n\n'
-                "One tool call per reply. After your reply ends, the system "
-                "executes the call and sends you the REAL output — never "
-                "write or predict a tool's output yourself. When the task is "
-                "complete and verified, reply with a short summary and no "
-                "tool call."
-            ),
+            "content": _dialect_profile.turn_note,
         })
-        logger.info("[agent] dialect turn-taking note v2 (few-shot) injected")
-    elif "deepseek-r1" in _mlower:
-        messages = _insert_before_latest_user(messages, {
-            "role": "system",
-            "content": _DEEPSEEK_TURN_NOTE,
-        })
-        logger.info("[agent] dialect turn-taking note v2 (few-shot, deepseek bare-JSON) injected")
+        logger.info(
+            f"[agent] dialect turn-taking note v2 (few-shot) injected ({_dialect_profile.family})"
+        )
 
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
@@ -4607,7 +4566,7 @@ async def stream_agent_loop(
             round_num,
             is_api_model=(_is_api_model and not guide_only),
             allow_fenced_for_api=_ody_doc_finetune_mode,
-            fenced_fallback=any(k in (model or "").lower() for k in _FENCED_DIALECT_MODELS),
+            fenced_fallback=_dialect_fenced_fallback_for(model),
         )
         if _ody_doc_stream_create_mode and tool_blocks:
             create_idx = next(
