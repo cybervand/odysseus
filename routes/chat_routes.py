@@ -1732,6 +1732,16 @@ def setup_chat_routes(
                             _forced_tools |= set(_BROWSER_MCP_TOOLS)
                     elif _explicit_browser_intent:
                         _forced_tools = set(_BROWSER_MCP_TOOLS)
+                    # An explicit terminal grant is a SUMMONS, not just a
+                    # permission slip: the toggle the user turned ON must put
+                    # bash in the round's toolbox regardless of what the
+                    # relevance filter thinks the message sounds like
+                    # (doc 008 gate #4 — terminal=False with disabled_n=0).
+                    if _bash_explicitly_granted and "bash" not in disabled_tools:
+                        _forced_tools = (_forced_tools or set()) | {
+                            "bash", "python", "read_file", "write_file",
+                            "edit_file", "ls", "grep", "glob",
+                        }
 
                     async for chunk in stream_agent_loop(
                         sess.endpoint_url,

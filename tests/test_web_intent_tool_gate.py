@@ -101,6 +101,15 @@ def test_guide_only_still_strips_everything_and_attributes():
     assert policy.sources.get("bash") == "guide-only"
 
 
+def test_explicit_bash_grant_is_a_summons_not_a_permission_slip():
+    """The toggle the user turned ON must put bash in the round's toolbox
+    regardless of what the relevance filter thinks the message sounds like
+    (gate #4: terminal=False with disabled_n=0)."""
+    source = _CHAT_ROUTES.read_text(encoding="utf-8")
+    assert 'if _bash_explicitly_granted and "bash" not in disabled_tools:' in source
+    assert "_forced_tools = (_forced_tools or set()) | {" in source
+
+
 def test_positional_toolpolicy_construction_still_works():
     # `sources` was appended LAST on the frozen dataclass precisely so older
     # positional constructions keep working.
