@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from core.models import ChatMessage
 from src.request_models import ChatRequest
 from src.llm_core import llm_call_async, stream_llm, stream_llm_with_fallback
-from src.agent_loop import stream_agent_loop
+from src.agent_loop import stream_agent_loop, _message_signals_commands
 from src import agent_runs
 from src.model_context import estimate_tokens
 from src.chat_helpers import coerce_message_and_session
@@ -47,6 +47,7 @@ from src.tool_policy import (
     WEB_TOOL_NAMES,
     build_effective_tool_policy,
     is_web_search_explicitly_denied,
+    tool_toggle_enabled,
     web_search_enabled_for_turn,
 )
 
@@ -126,6 +127,13 @@ _RECENT_BROWSER_CONTEXT_RE = re.compile(
     r"form\s+submission|playwright|automation)\b",
     re.I,
 )
+# Web-intent heuristic (module-level so tests exercise the REAL pattern).
+# Matches drive the web-intent tool strip below — which is guarded by
+# _message_signals_commands and explicit bash grants (doc 008).
+_EXPLICIT_WEB_INTENT_RE = re.compile(
+    r"\b(search|look\s*up|lookup|google|browse|web|online|latest|current|today|news|weather|forecast|rate|exchange\s+rate)\b",
+)
+
 _BROWSER_MCP_TOOLS = {
     "mcp__builtin_browser__browser_navigate",
     "mcp__builtin_browser__browser_snapshot",
@@ -758,10 +766,7 @@ def setup_chat_routes(
         _explicit_browser_intent = False
         if isinstance(message, str):
             _msg_l = message.lower()
-            _explicit_web_intent = bool(re.search(
-                r"\b(search|look\s*up|lookup|google|browse|web|online|latest|current|today|news|weather|forecast|rate|exchange\s+rate)\b",
-                _msg_l,
-            ))
+            _explicit_web_intent = bool(_EXPLICIT_WEB_INTENT_RE.search(_msg_l))
             _explicit_browser_intent = bool(re.search(
                 r"\b(browser|browse|open\s+(?:the\s+)?(?:site|page|url|link)|"
                 r"click|fill(?:\s+out)?|submit|send\s+(?:the\s+)?form|"
@@ -781,6 +786,7 @@ def setup_chat_routes(
         # its way through a plain chat request (and fail, especially with the
         # shell disabled).
         auto_escalated = False
+        _web_intent_escalation = False
         _tool_intent = _classify_tool_intent(message) if isinstance(message, str) else None
         _workspace_agent_intent = False
         if chat_mode == "chat" and _tool_intent and _tool_intent.needs_tools:
@@ -797,10 +803,12 @@ def setup_chat_routes(
         elif chat_mode == "chat" and _search_enabled:
             chat_mode = "agent"
             auto_escalated = True
+            _web_intent_escalation = True
             logger.info("chat→agent auto-escalation: search enabled")
         elif chat_mode == "chat" and _explicit_web_intent:
             chat_mode = "agent"
             auto_escalated = True
+            _web_intent_escalation = True
             logger.info("chat→agent auto-escalation: explicit web intent")
         active_doc_id = form_data.get("active_doc_id", "").strip()
         logger.info(f"[doc-inject] chat_mode={chat_mode}, active_doc_id={active_doc_id!r}")
@@ -1085,42 +1093,67 @@ def setup_chat_routes(
         finally:
             _doc_db.close()
 
-        # Build disabled-tools set from frontend toggles + user privileges
+        # Build disabled-tools set from frontend toggles + user privileges.
+        # Every gate records WHO disabled each tool (doc 008 `source` field):
+        # first gate wins, since the earliest attribution is the most specific.
         disabled_tools = set()
+        _disabled_sources: Dict[str, str] = {}
+
+        def _disable(tools, gate: str):
+            for _t in tools:
+                disabled_tools.add(_t)
+                _disabled_sources.setdefault(_t, gate)
+
+        # Heuristic strips below must never disarm a turn that asks for real
+        # commands (build/run/serve/...) or one whose caller explicitly
+        # granted bash — the same guard that fixed the identical doc-mode
+        # stripper bug (agent_loop). Explicit denials, privileges, admin,
+        # plan-mode and guide-only gates are NEVER skipped by this.
+        _command_signals = _message_signals_commands(message) if isinstance(message, str) else False
+        _bash_explicitly_granted = tool_toggle_enabled(allow_bash)
+
         # Only disable bash when the caller *explicitly* set it to a falsy
         # value. When unset (None), defer to per-user privilege checks below.
         # Web search is per-turn opt-in: either the chat pre-search setting
         # (`use_web=true`) or agent web toggle (`allow_web_search=true`) must
         # explicitly enable it.
         if allow_bash is not None and str(allow_bash).lower() != "true":
-            disabled_tools.add("bash")
+            _disable({"bash"}, "route-toggle")
         _explicit_web_intent = _explicit_web_intent or bool(_tool_intent and _tool_intent.category == "web")
         if is_web_search_explicitly_denied(allow_web_search) or not _search_enabled:
-            disabled_tools.update(WEB_TOOL_NAMES)
+            _disable(WEB_TOOL_NAMES, "web-toggle")
         if _explicit_web_intent:
             # A direct lookup/search request should not drift into personal
             # tools or shell fallbacks. It can only use web_search/web_fetch
             # when the request's explicit web setting enabled them.
-            disabled_tools.update({
-                "bash", "python",
-                "search_chats", "manage_skills", "manage_memory",
-                "read_file", "write_file", "edit_file",
-                "create_document", "edit_document", "update_document",
-                "send_email", "reply_to_email",
-                "manage_notes", "manage_calendar", "manage_tasks",
-                "api_call",
-            })
+            if not _command_signals:
+                _web_intent_strip = {
+                    "search_chats", "manage_skills", "manage_memory",
+                    "create_document", "edit_document", "update_document",
+                    "send_email", "reply_to_email",
+                    "manage_notes", "manage_calendar", "manage_tasks",
+                    "api_call",
+                }
+                if not _bash_explicitly_granted:
+                    _web_intent_strip |= {
+                        "bash", "python", "read_file", "write_file", "edit_file",
+                    }
+                _disable(_web_intent_strip, "web-intent")
+            else:
+                logger.info(
+                    "[agent-policy] web-intent strip SKIPPED: message signals commands"
+                )
             if _search_enabled:
                 disabled_tools.difference_update(WEB_TOOL_NAMES)
             else:
-                disabled_tools.update(WEB_TOOL_NAMES)
+                _disable(WEB_TOOL_NAMES, "web-intent")
         elif _search_enabled:
             disabled_tools.difference_update(WEB_TOOL_NAMES)
 
         # Nobody/incognito mode: deny tools that would expose the user's
         # persistent memory, past chats, or other identity-linked data.
         if incognito:
-            disabled_tools.update({
+            _disable({
                 "manage_memory",      # persistent memory store
                 "search_chats",       # past chat history
                 "manage_skills",      # skill presets tied to user
@@ -1129,7 +1162,7 @@ def setup_chat_routes(
                 "manage_session",
                 "send_to_session",
                 "chat_with_model",
-            })
+            }, "incognito")
 
         # Active email reader open → strip the tools that let the agent drift
         # away from the visible email or skip review. The only allowed compose
@@ -1138,13 +1171,13 @@ def setup_chat_routes(
         # the model from falling back to direct SMTP when it botches a draft
         # call, and prevents fake email-shaped documents.
         if active_email_ctx and active_email_ctx.get("uid"):
-            disabled_tools.update({
+            _disable({
                 "create_document",
                 "send_email",
                 "reply_to_email",
                 "mcp__email__send_email",
                 "mcp__email__reply_to_email",
-            })
+            }, "email-context")
 
         # Enforce per-user privileges
         _privs = {}
@@ -1153,15 +1186,15 @@ def setup_chat_routes(
             _privs = request.app.state.auth_manager.get_privileges(_user)
         if _privs:
             if not _privs.get("can_use_bash", True):
-                disabled_tools.update({"bash", "python", "read_file", "write_file"})
+                _disable({"bash", "python", "read_file", "write_file"}, "privileges")
             if not _privs.get("can_use_browser", True):
-                disabled_tools.update(_BROWSER_MCP_TOOLS)
+                _disable(_BROWSER_MCP_TOOLS, "privileges")
             if not _privs.get("can_use_documents", True):
-                disabled_tools.update({"create_document", "edit_document", "update_document", "suggest_document"})
+                _disable({"create_document", "edit_document", "update_document", "suggest_document"}, "privileges")
             if not _privs.get("can_generate_images", True):
-                disabled_tools.add("generate_image")
+                _disable({"generate_image"}, "privileges")
             if not _privs.get("can_manage_memory", True):
-                disabled_tools.update({"manage_memory", "manage_skills"})
+                _disable({"manage_memory", "manage_skills"}, "privileges")
             if not _privs.get("can_use_research", True):
                 _research_flags["do"] = False
             if not _privs.get("can_use_agent", True):
@@ -1171,7 +1204,7 @@ def setup_chat_routes(
         from src.settings import get_setting
         _global_disabled = get_setting("disabled_tools", [])
         if _global_disabled and isinstance(_global_disabled, list):
-            disabled_tools.update(_global_disabled)
+            _disable(_global_disabled, "admin")
 
         # Light auto-escalation: the user is in chat mode and just expressed a
         # notes/calendar/email intent. Grant the relevant managers but withhold
@@ -1179,15 +1212,21 @@ def setup_chat_routes(
         # tries to shell out for a request that never needed it, then fails
         # (and looks broken when the shell is disabled).
         if auto_escalated and not _workspace_agent_intent:
-            disabled_tools.update({
-                "bash", "python", "read_file", "write_file",
-            })
+            # Web-flavored escalations get the same command-signal /
+            # explicit-grant escape hatch as the main web-intent gate (the
+            # chat-mode variant of the same silent-disarm bug). Typed
+            # notes/calendar escalations keep their strip: the classifier's
+            # positive signal outranks the command regex there.
+            if not ((_web_intent_escalation and _command_signals) or _bash_explicitly_granted):
+                _disable({
+                    "bash", "python", "read_file", "write_file",
+                }, "auto-escalation")
             if not _allow_browser_for_web_turn:
-                disabled_tools.update(_BROWSER_MCP_TOOLS)
+                _disable(_BROWSER_MCP_TOOLS, "auto-escalation")
 
         # Disable document tools in compare sessions — they break the pane UI
         if sess.name and sess.name.startswith("[CMP]"):
-            disabled_tools.update({"create_document", "edit_document", "update_document"})
+            _disable({"create_document", "edit_document", "update_document"}, "compare")
 
         # Compare mode: disable tools based on compare type
         if compare_mode:
@@ -1198,21 +1237,22 @@ def setup_chat_routes(
                 "pipeline", "manage_session", "manage_memory", "list_models",
                 "generate_image", "ui_control",
             }
-            disabled_tools.update(_compare_strip)
+            _disable(_compare_strip, "compare")
             # In chat mode compare, disable ALL agent tools (no bash, python, file ops)
             if chat_mode == 'chat':
-                disabled_tools.update({"bash", "python", "read_file", "write_file", "web_search", "web_fetch", "search_chats", "manage_tasks"})
+                _disable({"bash", "python", "read_file", "write_file", "web_search", "web_fetch", "search_chats", "manage_tasks"}, "compare")
 
         # Plan mode: investigate read-only, propose a plan, don't mutate. Block
         # every tool not on the read-only allowlist. (stream_agent_loop enforces
         # this again + drops MCP, so this is belt-and-suspenders.)
         if plan_mode:
             from src.tool_security import plan_mode_disabled_tools
-            disabled_tools.update(plan_mode_disabled_tools())
+            _disable(plan_mode_disabled_tools(), "plan-mode")
 
         tool_policy = build_effective_tool_policy(
             disabled_tools=disabled_tools,
             last_user_message=message,
+            disabled_sources=_disabled_sources,
         )
         disabled_tools = tool_policy.all_disabled_names()
         research_blocked_by_policy = bool(

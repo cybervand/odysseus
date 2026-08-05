@@ -146,6 +146,10 @@ class ToolPolicy:
     mode: str = "normal"
     block_all_tool_calls: bool = False
     disable_mcp: bool = False
+    # Doc 008 `source` field: which gate disabled each tool
+    # (route-toggle, web-intent, privileges, admin, plan-mode, guide-only, ...).
+    # Appended LAST so positional construction in existing tests keeps working.
+    sources: Mapping[str, str] = field(default_factory=dict)
 
     def all_disabled_names(self) -> Set[str]:
         return set(self.disabled_tools) | set(self.hidden_tools)
@@ -208,17 +212,23 @@ def build_effective_tool_policy(
     *,
     disabled_tools: Optional[Iterable[str]] = None,
     last_user_message: object = "",
+    disabled_sources: Optional[Mapping[str, str]] = None,
 ) -> ToolPolicy:
     """Compose the effective policy for one agent turn.
 
     Existing callers still provide the already-composed disabled-tool denylist.
     This function adds higher-level turn policy on top so enforcement is not
-    delegated to prompt compliance.
+    delegated to prompt compliance. `disabled_sources` attributes each
+    disabled tool to the gate that disabled it (doc 008 `source` field);
+    unattributed names default to "route".
     """
 
     disabled = {str(t) for t in (disabled_tools or []) if t}
     hidden: Set[str] = set()
     reasons = {tool: "Tool is disabled for this request." for tool in disabled}
+    sources = dict(disabled_sources or {})
+    for tool in disabled:
+        sources.setdefault(tool, "route")
 
     guide_reason = detect_guide_only_turn(last_user_message)
     if guide_reason:
@@ -226,6 +236,8 @@ def build_effective_tool_policy(
         disabled.update(all_tools)
         hidden.update(all_tools)
         reasons.update({tool: f"{guide_reason}." for tool in all_tools})
+        for tool in all_tools:
+            sources.setdefault(tool, "guide-only")
         return ToolPolicy(
             disabled_tools=frozenset(disabled),
             hidden_tools=frozenset(hidden),
@@ -233,10 +245,12 @@ def build_effective_tool_policy(
             mode="guide_only",
             block_all_tool_calls=True,
             disable_mcp=True,
+            sources=MappingProxyType(sources),
         )
 
     return ToolPolicy(
         disabled_tools=frozenset(disabled),
         hidden_tools=frozenset(hidden),
         reasons=MappingProxyType(dict(reasons)),
+        sources=MappingProxyType(sources),
     )

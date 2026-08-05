@@ -111,8 +111,9 @@ def test_disabled_tools_respects_missing_vs_explicit_toggles():
     assert "web_search_enabled_for_turn(allow_web_search, use_web)" in source, (
         "web tools must be gated through the explicit per-turn web setting"
     )
-    assert "disabled_tools.update(WEB_TOOL_NAMES)" in source, (
-        "disabled_tools must add web_search/web_fetch when web is not explicitly enabled"
+    assert '_disable(WEB_TOOL_NAMES, "web-toggle")' in source, (
+        "disabled_tools must add web_search/web_fetch (with source attribution) "
+        "when web is not explicitly enabled"
     )
     assert "_forced_tools = set(WEB_TOOL_NAMES)" in source, (
         "web tools should only be forced visible from the explicit web setting"
@@ -326,14 +327,24 @@ def test_explicit_false_disables_even_for_admin():
 _CHAT_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "chat.js"
 
 
-def test_frontend_always_sends_explicit_allow_bash():
-    """chat.js must always send allow_bash (both true and false), not only on toggle ON."""
+def test_frontend_sends_allow_bash_only_when_explicitly_set():
+    """Tri-state allow_bash (doc 008 toggle-clobber fix): chat.js sends a value
+    only for an explicit per-session choice (or legacy per-mode override, or
+    the workspace-intent force) and OMITS the field otherwise so the server's
+    defaults decide — the browser must not clobber API-created sessions."""
     source = _CHAT_JS.read_text(encoding="utf-8")
-    # Must not only append 'true' — must also handle the false case
-    assert "allow_bash', el('bash-toggle').checked ? 'true' : 'false'" in source or \
-           "allow_bash', 'false'" in source, (
-        "Frontend must send explicit allow_bash=false when toggle is off"
+    # The old unconditional send must be gone.
+    assert "fd.append('allow_bash', el('bash-toggle').checked ? 'true' : 'false')" not in source, (
+        "Frontend must not unconditionally send allow_bash from the global toggle"
     )
+    # Explicit choices still send BOTH true and false…
+    assert "_bashPref ? 'true' : 'false'" in source
+    # …reading the per-session tri-state pref…
+    assert "getSessionToolPref(streamSessionId, 'bash')" in source
+    # …with the legacy per-mode override honored for pre-migration users…
+    assert "_legacyToggles[_legacyKey] ? 'true' : 'false'" in source
+    # …and the workspace-intent force intact.
+    assert "fd.append('allow_bash', 'true')" in source
 
 
 def test_frontend_sends_explicit_allow_web_search_false_in_agent_mode():

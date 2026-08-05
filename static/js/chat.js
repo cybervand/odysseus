@@ -1698,8 +1698,24 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
 	        fd.set('mode', 'chat');
 	        fd.set('plan_mode', 'false');
 	      }
-      fd.append('allow_bash', el('bash-toggle').checked ? 'true' : 'false');
-      if (workspaceAgentIntent) fd.set('allow_bash', 'true');
+      // Tri-state allow_bash (doc 008 toggle-clobber fix): only send a value
+      // when the user explicitly chose one — per-session pref first, then a
+      // legacy per-mode override from before the migration. When neither
+      // exists, OMIT the field so the server's own defaults (privileges)
+      // decide; the browser no longer clobbers API-created sessions with its
+      // global default.
+      {
+        const _bashPref = Storage.getSessionToolPref(streamSessionId, 'bash');
+        const _legacyToggles = Storage.loadToggleState();
+        const _legacyKey = 'bash_' + (isAgentMode ? 'agent' : 'chat');
+        if (workspaceAgentIntent) {
+          fd.append('allow_bash', 'true');
+        } else if (_bashPref !== undefined) {
+          fd.append('allow_bash', _bashPref ? 'true' : 'false');
+        } else if (Object.prototype.hasOwnProperty.call(_legacyToggles, _legacyKey)) {
+          fd.append('allow_bash', _legacyToggles[_legacyKey] ? 'true' : 'false');
+        }
+      }
       const ragChk = el('rag-toggle');
       if (ragChk && !ragChk.checked) {
         fd.append('use_rag', 'false');

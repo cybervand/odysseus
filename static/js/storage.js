@@ -25,7 +25,8 @@ export const KEYS = {
   ADMIN_LAST_TAB: 'admin-last-tab',
   DENSITY: 'odysseus-density',
   UI_SCALE: 'odysseus-ui-scale',
-  WORKSPACE: 'odysseus-workspace'
+  WORKSPACE: 'odysseus-workspace',
+  SESSION_TOOLS: 'odysseus-session-tools'
 };
 
 /**
@@ -103,6 +104,37 @@ export function getToggle(name, fallback) {
   return state[name] !== undefined ? state[name] : (fallback !== undefined ? fallback : false);
 }
 
+// ── Per-session tool preferences (tri-state) ──
+// A toggle choice made while a session is open is stored FOR THAT SESSION.
+// getSessionToolPref returns true/false only when the user explicitly chose
+// for this session, undefined otherwise — the caller must OMIT the request
+// field on undefined so the server's own defaults decide. This is what stops
+// the browser's global defaults from clobbering API-created sessions.
+const SESSION_TOOLS_MAX = 100;
+
+export function getSessionToolPref(sessionId, key) {
+  if (!sessionId) return undefined;
+  const all = getJSON(KEYS.SESSION_TOOLS, {});
+  const entry = all[sessionId];
+  return entry && Object.prototype.hasOwnProperty.call(entry, key) ? !!entry[key] : undefined;
+}
+
+export function setSessionToolPref(sessionId, key, value) {
+  if (!sessionId) return;
+  const all = getJSON(KEYS.SESSION_TOOLS, {});
+  const entry = all[sessionId] || {};
+  entry[key] = !!value;
+  entry._t = Date.now();
+  all[sessionId] = entry;
+  // LRU cap so the map can't grow unboundedly across hundreds of sessions.
+  const ids = Object.keys(all);
+  if (ids.length > SESSION_TOOLS_MAX) {
+    ids.sort((a, b) => (all[a]._t || 0) - (all[b]._t || 0));
+    for (const id of ids.slice(0, ids.length - SESSION_TOOLS_MAX)) delete all[id];
+  }
+  setJSON(KEYS.SESSION_TOOLS, all);
+}
+
 export function setToggle(name, value) {
   const state = loadToggleState();
   state[name] = value;
@@ -119,7 +151,9 @@ const Storage = {
   loadToggleState,
   saveToggleState,
   getToggle,
-  setToggle
+  setToggle,
+  getSessionToolPref,
+  setSessionToolPref
 };
 
 export default Storage;

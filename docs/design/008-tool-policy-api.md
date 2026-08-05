@@ -53,9 +53,16 @@ non-admin block) so the answer to "who turned this off" is in the record.
 
 ## Open items
 
-- Composer: make the `>_` and web toggles' current state visibly sticky
-  per chat (the regex silently deciding allow_bash is how today's
-  confusion started).
+- Composer: surface the per-session bash pref visibly in the UI (the
+  tri-state now EXISTS client-side; a visual "session override" hint on
+  the toggle would complete it).
+- Server-persisted per-session tool settings (the 5b follow-up): needs a
+  deliberate design for WHICH callers' params mutate persistent state —
+  a one-off API `allow_bash=true` must not silently become session
+  policy. Until then the tri-state is client-side only.
+- Extract `_compose_route_disabled_tools()` so route-gate tests exercise
+  the real composition instead of textual pins (deferred from the
+  2026-08-06 fix; the drifted test replica should be retired with it).
 - Extend snapshot to plugin/MCP health (connected, tool count, disabled).
 
 ## Decision log
@@ -76,3 +83,22 @@ non-admin block) so the answer to "who turned this off" is in the record.
   the tool_policy event; injecting policy DELTAS into model context
   ("terminal is NOW available") to break stale self-narrative anchoring;
   memory extractor must never memorize capability claims.
+- 2026-08-06 — the `source` field SHIPPED, plus the guard this doc
+  predicted. Trigger: the web-intent regex stripped bash + all file tools
+  from a "build me a website (...images from the net...)" turn; gpt-oss
+  truthfully claimed no shell mid-build; the [agent-policy] line's [:12]
+  truncation hid the strip's tail and misdirected diagnosis at the UI
+  toggle. Fixes: (1) both web-intent strips (main gate + chat-mode
+  auto-escalation) now skip when `_message_signals_commands` fires or
+  bash was explicitly granted — the same guard that fixed the doc-mode
+  stripper; explicit denials/privileges/admin/plan/guide-only gates are
+  never skipped. (2) Every disabled tool carries a `source` gate name
+  end-to-end (route `_disable()` closure → ToolPolicy.sources →
+  loop-level setdefaults → snapshot["source"] in SSE/metadata); the log
+  line prints disabled_n + by_gate + the FULL list, never truncated.
+  (3) Toggle-clobber fix, client-side tri-state: bash choices are stored
+  per-session (odysseus-session-tools, LRU-capped); chat.js omits
+  allow_bash entirely unless explicitly chosen for that session (legacy
+  per-mode overrides honored), so browsers no longer clobber API-created
+  sessions. Tests: tests/test_web_intent_tool_gate.py + updated frontend
+  contract test.

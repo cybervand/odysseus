@@ -1838,6 +1838,9 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     }
     currentSessionId = id;
     try { window.__odysseusLastSelectedSessionId = id; } catch (_) {}
+    // Repaint tool toggles from this session's stored prefs (per-session
+    // bash tri-state — doc 008 toggle-clobber fix).
+    try { window.__odysseusSyncToolToggles?.(); } catch (_) {}
     // Identify Assistant / task-output sessions so we don't "trap" the user
     // there on return. Skipped from both `lastSessionId` persistence and the
     // URL hash — the user complained that coming back to Odysseus kept

@@ -1716,6 +1716,13 @@ function initializeEventListeners() {
   function _modeKey(stateKey, mode) { return `${stateKey}_${mode}`; }
 
   function loadToolPref(stateKey, mode) {
+    // Bash is per-SESSION first (tri-state; doc 008 toggle-clobber fix):
+    // an explicit choice made in this session wins over the mode default.
+    if (stateKey === 'bash') {
+      const sid = window.sessionModule?.getCurrentSessionId?.();
+      const per = Storage.getSessionToolPref(sid, 'bash');
+      if (per !== undefined) return per;
+    }
     const state = loadToggleState();
     const key = _modeKey(stateKey, mode);
     if (Object.prototype.hasOwnProperty.call(state, key)) return !!state[key];
@@ -1937,7 +1944,16 @@ function initializeEventListeners() {
       chk.checked = !chk.checked;
       btn.classList.toggle('active', chk.checked);
       btn.setAttribute('aria-pressed', String(chk.checked));
-      saveToolPref(stateKey, curMode, chk.checked);
+      if (stateKey === 'bash') {
+        // Bash choices are per-session (tri-state clobber fix). Only fall
+        // back to the legacy per-mode key when no session exists yet, so
+        // the choice isn't lost pre-first-message.
+        const sid = window.sessionModule?.getCurrentSessionId?.();
+        if (sid) Storage.setSessionToolPref(sid, 'bash', chk.checked);
+        else saveToolPref(stateKey, curMode, chk.checked);
+      } else {
+        saveToolPref(stateKey, curMode, chk.checked);
+      }
       showToolToggleToast(stateKey, chk.checked);
       if (chk.checked) _showToolSplash(stateKey);
       // Web search and Research are mutually exclusive — Research takes priority
@@ -1951,6 +1967,11 @@ function initializeEventListeners() {
   }
   setupToggle('web-toggle-btn', 'web-toggle', 'web');
   setupToggle('bash-toggle-btn', 'bash-toggle', 'bash');
+  // Session switches repaint toggles from that session's stored prefs
+  // (sessions.js calls this after selecting a session).
+  window.__odysseusSyncToolToggles = () => {
+    applyModeToToggles((loadToggleState().mode) || 'chat');
+  };
   try { workspaceModule.initWorkspace(); } catch (_) {}
 
   // Document editor toggle (special: uses module panel, not a checkbox)

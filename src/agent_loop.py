@@ -3363,6 +3363,10 @@ async def stream_agent_loop(
     mcp_mgr = get_mcp_manager()
     prep_timings: Dict[str, float] = {}
     disabled_tools = set(disabled_tools or [])
+    # Doc 008 `source` field: gate attribution carried from the route policy,
+    # extended by the loop-level gates below. setdefault keeps the earliest
+    # (most specific) attribution.
+    _disabled_sources: Dict[str, str] = dict(getattr(tool_policy, "sources", None) or {})
     if tool_policy:
         disabled_tools.update(tool_policy.all_disabled_names())
         if tool_policy.disable_mcp:
@@ -3371,6 +3375,8 @@ async def stream_agent_loop(
     public_blocked_tools = blocked_tools_for_owner(owner)
     if public_blocked_tools:
         disabled_tools.update(public_blocked_tools)
+        for _t in public_blocked_tools:
+            _disabled_sources.setdefault(_t, "owner-blocklist")
         # MCP tools are namespaced dynamically, so hide all MCP schemas for
         # public/non-admin users rather than trying to enumerate every tool.
         mcp_mgr = None
@@ -3380,7 +3386,10 @@ async def stream_agent_loop(
         # route also unions the read-only-disabled set, but enforce here too so
         # the loop is safe regardless of caller. MCP stays available but is
         # filtered to read-only tools below (after the disabled map is loaded).
-        disabled_tools.update(plan_mode_disabled_tools())
+        _plan_strip = plan_mode_disabled_tools()
+        disabled_tools.update(_plan_strip)
+        for _t in _plan_strip:
+            _disabled_sources.setdefault(_t, "plan-mode")
 
     uploaded_files = uploaded_files or []
     _upload_msg = _uploaded_files_context_message(uploaded_files)
@@ -3439,10 +3448,13 @@ async def stream_agent_loop(
     _active_document_relevant = _turn_targets_active_document(_intent, _last_user, active_document)
     _active_email_draft_relevant = _active_document_relevant and _is_email_document_obj(active_document)
     if _active_email_draft_relevant:
-        disabled_tools.update({
+        _email_draft_strip = {
             "list_email_accounts", "list_emails", "read_email", "scan_email_unsubscribes",
             "mcp__email__list_emails", "mcp__email__read_email", "mcp__email__scan_email_unsubscribes",
-        })
+        }
+        disabled_tools.update(_email_draft_strip)
+        for _t in _email_draft_strip:
+            _disabled_sources.setdefault(_t, "email-context")
     _prompt_active_document = active_document if _active_document_relevant else None
     _direct_low_signal = (
         _low_signal_turn
@@ -3869,7 +3881,10 @@ async def stream_agent_loop(
         _relevant_tools = set()
         try:
             from src.tool_policy import known_tool_names
-            disabled_tools.update(known_tool_names())
+            _clamp = known_tool_names()
+            disabled_tools.update(_clamp)
+            for _t in _clamp:
+                _disabled_sources.setdefault(_t, "model-clamp")
         except Exception:
             pass
         logger.info("[agent-intent] odysseus general no-tool clamp active")
@@ -4296,13 +4311,26 @@ async def stream_agent_loop(
             "forced": sorted(forced_tools) if forced_tools else [],
             "tools_sent": len(_tool_names_sent),
             "model": model,
+            # Doc 008 `source`: which gate disabled each tool. Additive key —
+            # SSE/metadata/watcher consumers tolerate new fields.
+            "source": {
+                _t: _disabled_sources.get(_t, "route")
+                for _t in sorted(disabled_tools)
+            },
         }
+        _by_gate: Dict[str, int] = {}
+        for _g in _policy_snapshot["source"].values():
+            _by_gate[_g] = _by_gate.get(_g, 0) + 1
+        # Full list, never truncated — the [:12] cut hid the web-intent strip's
+        # tail for a whole evening (doc 008). by_gate gives one-glance triage.
         logger.info(
             f"[agent-policy] terminal={_policy_snapshot['terminal']} "
             f"web_search={_policy_snapshot['web_search']} "
             f"workspace={_policy_snapshot['workspace']} "
-            f"disabled={_policy_snapshot['disabled'][:12]} "
-            f"forced={_policy_snapshot['forced'][:8]}"
+            f"disabled_n={len(_policy_snapshot['disabled'])} "
+            f"by_gate={' '.join(f'{g}:{n}' for g, n in sorted(_by_gate.items())) or '-'} "
+            f"disabled={_policy_snapshot['disabled']} "
+            f"forced={_policy_snapshot['forced']}"
         )
         if round_num == 1:
             yield f'data: {json.dumps({"type": "tool_policy", **_policy_snapshot})}\n\n'
