@@ -65,6 +65,29 @@ def test_colon_inline_specimen():
     assert "mkdir -p coffee_glm4-9b_29929" in blocks[0].content
 
 
+def test_unquoted_path_quoted_content_specimen():
+    # Rematch 21214 R2: write_file path "content" — path bare, content quoted.
+    text = 'write_file coffee_glm4-9b_21214/index.html "h1 Copper Warehouse Coffee\\nmenu"'
+    blocks = parse_tool_blocks(text)
+    assert len(blocks) == 1
+    assert blocks[0].tool_type == "write_file"
+    assert blocks[0].content.startswith("coffee_glm4-9b_21214/index.html\n")
+
+
+def test_unquoted_path_json_body_specimen():
+    # Rematch 21214 R5: write_file path then {"content": "..."} JSON body.
+    text = (
+        "write_file coffee_glm4-9b_21214/index.html\n"
+        '{\n    "content": "<!DOCTYPE html>\\n<html lang=\\"en\\"><head><title>Copper Warehouse Coffee</title></head></html>"\n}'
+    )
+    blocks = parse_tool_blocks(text)
+    assert len(blocks) == 1
+    wf = blocks[0]
+    assert wf.tool_type == "write_file"
+    assert wf.content.startswith("coffee_glm4-9b_21214/index.html\n")
+    assert "Copper Warehouse Coffee" in wf.content
+
+
 def test_prose_mentioning_tools_is_not_parsed():
     assert parse_tool_blocks("I could use bash for this, or maybe write_file later.") == []
     assert parse_tool_blocks("The bash tool is great.") == []

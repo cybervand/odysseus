@@ -1467,8 +1467,42 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
                     blocks.append(block)
                 i += 1
                 continue
-            if tool == "write_file" and rest.startswith(":"):
-                rest = rest[1:].strip()
+            if tool == "write_file":
+                if rest.startswith(":"):
+                    rest = rest[1:].strip()
+                # GLM freestyles its serialization (six shapes in five runs) —
+                # generalize: path quoted or bare token; content as a quoted
+                # string, paren-quoted string, or JSON object {"content": ...}
+                # on the same/following lines. Bare prose after the name never
+                # yields content in any of these forms, so it stays inert.
+                pm = re.match(r'"([^"]+)"\s*(.*)$', rest, re.S) or re.match(r"(\S+)\s*(.*)$", rest, re.S)
+                if pm:
+                    path = pm.group(1)
+                    remainder = (pm.group(2) + "\n" + "\n".join(lines[i + 1:])).strip()
+                    content_body = None
+                    if remainder.startswith('("'):
+                        endq = remainder.rfind('")')
+                        content_body = remainder[2:endq] if endq > 1 else remainder[2:]
+                    elif remainder.startswith('"'):
+                        endq = remainder.rfind('"')
+                        content_body = remainder[1:endq] if endq > 0 else remainder[1:]
+                    elif remainder.startswith("{"):
+                        try:
+                            obj, _ = json.JSONDecoder().raw_decode(remainder)
+                            if isinstance(obj, dict) and isinstance(obj.get("content"), str):
+                                content_body = obj["content"]
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                    if path and isinstance(content_body, str) and content_body.strip():
+                        from src.tool_schemas import function_call_to_tool_block
+                        block = function_call_to_tool_block(
+                            "write_file", json.dumps({"path": path, "content": content_body})
+                        )
+                        if block:
+                            blocks.append(block)
+                            break  # content consumed the remainder — one write per message
+                i += 1
+                continue
             if tool in ("bash", "python") and not rest:
                 # Command is the next non-empty line (both specimens single-line).
                 j = i + 1
@@ -1483,25 +1517,6 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
                         blocks.append(block)
                     i = j + 1
                     continue
-            elif tool == "write_file" and rest.startswith('"'):
-                # Two observed arg shapes: `"path" "content..."` (probe) and
-                # the function-call variant `"path"("content...")` (rematch
-                # 24158 — where the dropped writes sent glm4 into seven rounds
-                # of debugging a void the parser created).
-                qm = re.match(r'"([^"]+)"\s*(\()?\s*"(.*)', rest, re.S)
-                if qm:
-                    path = qm.group(1)
-                    paren = bool(qm.group(2))
-                    remainder = qm.group(3) + "\n" + "\n".join(lines[i + 1:])
-                    endq = remainder.rfind('")') if paren else remainder.rfind('"')
-                    content_body = remainder[:endq] if endq != -1 else remainder
-                    from src.tool_schemas import function_call_to_tool_block
-                    block = function_call_to_tool_block(
-                        "write_file", json.dumps({"path": path, "content": content_body})
-                    )
-                    if block:
-                        blocks.append(block)
-                        break  # consumed the rest of the text as content
             i += 1
 
     # Pattern 4: <tool_code> blocks (MiniMax-M2.5 style)
