@@ -3216,6 +3216,34 @@ from src.dialect_profiles import (  # noqa: E402
     profile_for as _dialect_profile_for,
 )
 
+# Doc 008 "policy deltas": models anchor on their own past capability
+# claims — once a gate said no-shell, the model keeps repeating it for the
+# rest of the session even when every tool is back (observed three times:
+# the 2026-08-02 toggle arc, and twice on 2026-08-05 around the web-intent
+# gatefix — gpt-oss with disabled_n=0 still "I don't have permission to
+# invoke bash"). When a recent assistant turn denied shell/file access but
+# the terminal IS enabled this turn, one corrective line breaks the anchor.
+_CAPABILITY_DENIAL_RE = re.compile(
+    r"(?:can['’]?t|cannot|don['’]?t|do not|unable to|not able to|no way to|lack)\s+"
+    r"(?:\w+\s+){0,3}?"
+    r"(?:permission|access|ability|shell|bash|terminal|command[- ]line|filesystem|file system)"
+    r"|(?:shell|bash|terminal|tools?)\s+(?:access\s+)?(?:is|are)\s+"
+    r"(?:disabled|unavailable|not available|blocked)",
+    re.IGNORECASE,
+)
+
+
+def _needs_capability_correction(messages, disabled_tools) -> bool:
+    """True when the model recently claimed it lacks shell access but the
+    terminal is actually enabled this turn."""
+    if "bash" in (disabled_tools or set()):
+        return False
+    recent = [m for m in messages if m.get("role") == "assistant"][-3:]
+    return any(
+        _CAPABILITY_DENIAL_RE.search(str(m.get("content") or "")) for m in recent
+    )
+
+
 def _message_signals_commands(text: str) -> bool:
     """Whether the user's message calls for shell/file tools: named commands,
     package managers, or filesystem paths. Pure so it is unit-testable."""
@@ -3429,6 +3457,22 @@ async def stream_agent_loop(
         })
         logger.info(
             f"[agent] dialect turn-taking note v2 (few-shot) injected ({_dialect_profile.family})"
+        )
+
+    # Doc 008 policy delta: break stale "I have no shell" self-narrative.
+    if not guide_only and _needs_capability_correction(messages, disabled_tools):
+        messages = _insert_before_latest_user(messages, {
+            "role": "system",
+            "content": (
+                "CAPABILITY UPDATE: your earlier statements that you lack "
+                "shell or file access are OUTDATED. This turn bash, python, "
+                "read_file, write_file and edit_file ARE enabled. Do not "
+                "repeat the old claim and do not explain steps for the user "
+                "to run — perform the next step yourself by calling a tool."
+            ),
+        })
+        logger.info(
+            "[agent-policy] capability-correction note injected (stale no-shell claim, terminal enabled)"
         )
 
     _t0 = time.time()
