@@ -85,3 +85,18 @@ database and doc 012's specimens are the first tables of that system.
 
 - 2026-08-05 — R0 launched: deepseek-r1:14b (lazytest session, full
   protocol). Predictions above.
+- 2026-08-05 — **R0 deepseek-r1:14b: fails, but not where predicted.**
+  The react cliff DIDN'T stop it: 23 npm + 9 npx + 3 yarn + 2 node calls,
+  a real `npx create-react-app` TypeScript scaffold with node_modules on
+  disk (third npm-capable surprise after gemma4). What failed:
+  - **NEW FAILURE CLASS — scaffolds forever, never writes content.** The
+    CRA App.tsx is untouched boilerplate; zero coffee-specific code
+    anywhere. All rounds went to toolchain theater.
+  - No project coherence: THREE roots (coffee-shop/, coffee-shop-website/,
+    plus husk files strewn at workspace root — 0-byte HeroSection.jsx).
+  - Images requirement ignored (no curl/wget/web_search calls).
+  - Also: 1 sudo attempt, JSX pasted into bash fences (2× exit 127).
+  - Run self-terminated (~640s drain) — no lingering this time.
+  Candidate R1 clarifiers: "put everything in one folder named X" +
+  "content first: write the actual pages before any toolchain setup".
+  Ladder table gains the scaffolds-forever row.
