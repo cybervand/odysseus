@@ -102,6 +102,19 @@ pattern? raw markup shape?
   6. deepseek-r1:14b REAL status: full task completion with the complete
      stack (fenced fallback + heredoc splitter + bare-JSON note +
      micro-step driver) — just slower than the old observation window.
+  7. **CONTAMINATION + LINGERING RUNS.** At 21:4x all three rematch runs
+     (3/4/5) were STILL alive concurrently — rematch 3 at 31k events,
+     rewriting its (already complete) files at 21:34. Sequential tests
+     were never sequential: rematch 4 competed with 3's leftover run;
+     rematch 5 was fully starved (no dir, invalid sample). Cleared via
+     container restart. Protocol now: pre-flight assert /api/chat/runs
+     EMPTY before launch + drain before grading (both in rematch script).
+     Sample tally for the note build: rematch 3 = clean FULL PASS 3/3;
+     rematch 4/5 = contaminated, void. Clean rematch 6 launched.
+     OPEN QUESTION: does the agent-timeout setting bound buffered-run
+     wall clock? A finished-then-still-working run suggests the loop
+     lacks a "done means stop" guard — upstream also plans a runaway
+     detector (#3266 submodule); convergent need, candidate next fix.
 - 2026-08-05 — REGISTRY: src/dialect_profiles.py is now THE index (doc
   009 "profiles as data" delivered). Turn notes, fenced-fallback flags,
   pattern assignments, and diagnosed-only families all live in one
