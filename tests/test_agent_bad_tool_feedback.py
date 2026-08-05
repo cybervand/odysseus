@@ -14,7 +14,7 @@ import src.agent_loop as al
 
 def test_unknown_tool_reported_as_failed_not_known():
     native = [{"name": "cat", "arguments": '{"file_path": "/tmp/x"}', "id": "A"}]
-    tool_blocks, used_native, converted, failed = al._resolve_tool_blocks("", native, 1)
+    tool_blocks, used_native, converted, failed, _ = al._resolve_tool_blocks("", native, 1)
     assert tool_blocks == []
     assert used_native is False
     assert converted == []
@@ -25,7 +25,7 @@ def test_unknown_tool_reported_as_failed_not_known():
 
 def test_known_tool_with_unparseable_args_reported_as_failed_known():
     native = [{"name": "web_search", "arguments": "not-json{{{", "id": "A"}]
-    tool_blocks, used_native, converted, failed = al._resolve_tool_blocks("", native, 1)
+    tool_blocks, used_native, converted, failed, _ = al._resolve_tool_blocks("", native, 1)
     assert tool_blocks == []
     assert len(failed) == 1
     assert failed[0]["name"] == "web_search"
@@ -34,7 +34,7 @@ def test_known_tool_with_unparseable_args_reported_as_failed_known():
 
 def test_successful_conversion_reports_no_failures():
     native = [{"name": "web_search", "arguments": '{"query": "hi"}', "id": "A"}]
-    tool_blocks, used_native, converted, failed = al._resolve_tool_blocks("", native, 1)
+    tool_blocks, used_native, converted, failed, _ = al._resolve_tool_blocks("", native, 1)
     assert len(tool_blocks) == 1
     assert failed == []
 
@@ -44,7 +44,7 @@ def test_mixed_round_reports_only_the_failed_call():
         {"name": "cat", "arguments": "{}", "id": "A"},
         {"name": "web_search", "arguments": '{"query": "hi"}', "id": "B"},
     ]
-    tool_blocks, used_native, converted, failed = al._resolve_tool_blocks("", native, 1)
+    tool_blocks, used_native, converted, failed, _ = al._resolve_tool_blocks("", native, 1)
     assert len(tool_blocks) == 1
     assert [c["name"] for c in converted] == ["web_search"]
     assert [f["name"] for f in failed] == ["cat"]

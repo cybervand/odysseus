@@ -2801,15 +2801,20 @@ def _resolve_tool_blocks(
     round_num: int,
     is_api_model: bool = False,
     allow_fenced_for_api: bool = False,
+    fenced_fallback: bool = False,
 ):
     """Choose native function calls or fenced code block parsing.
 
-    Returns (tool_blocks, used_native, converted_calls, failed_calls) where
-    failed_calls describes native calls that could not be converted (unknown
-    tool name or unusable arguments) so the caller can feed the error back to
-    the model instead of silently dropping the attempted action.
+    Returns (tool_blocks, used_native, converted_calls, failed_calls,
+    used_fenced_fallback) where failed_calls describes native calls that could
+    not be converted (unknown tool name or unusable arguments) so the caller
+    can feed the error back to the model instead of silently dropping the
+    attempted action, and used_fenced_fallback reports that fences were
+    executed via the fenced-dialect fallback — the caller's strip_tool_blocks
+    must mirror it or the executed fence persists into displayed text.
     """
     used_native = False
+    used_fenced_fallback = False
     converted_calls = []  # native calls that converted, ALIGNED with tool_blocks
     failed_calls = []     # native calls that did NOT convert
     if native_tool_calls:
@@ -2850,7 +2855,16 @@ def _resolve_tool_blocks(
         # falling back to DSML). Dropping the whole parser would silently lose
         # those too. Non-native / textual-only models keep every pattern,
         # fenced blocks included, since that's their *only* tool channel.
-        tool_blocks = parse_tool_blocks(round_response, skip_fenced=(is_api_model and not allow_fenced_for_api))
+        _skip = is_api_model and not allow_fenced_for_api
+        tool_blocks = parse_tool_blocks(round_response, skip_fenced=_skip)
+        if not tool_blocks and _skip and fenced_fallback:
+            # Fenced-dialect family with a silent structured channel this turn:
+            # its fences ARE the call (see _FENCED_DIALECT_MODELS).
+            tool_blocks = parse_tool_blocks(round_response, skip_fenced=False)
+            if tool_blocks:
+                used_fenced_fallback = True
+                logger.info(f"Agent round {round_num}: fenced-dialect fallback executed "
+                            f"{len(tool_blocks)} fence(s) (0 native calls)")
         if tool_blocks:
             logger.info(f"Agent round {round_num}: {len(tool_blocks)} fenced tool block(s) detected")
 
@@ -2859,7 +2873,7 @@ def _resolve_tool_blocks(
                 f"{len(native_tool_calls)} native calls, "
                 f"{len(tool_blocks)} tool blocks. Preview: {resp_preview}")
 
-    return tool_blocks, used_native, converted_calls, failed_calls
+    return tool_blocks, used_native, converted_calls, failed_calls, used_fenced_fallback
 
 
 def _append_tool_results(
@@ -3195,6 +3209,15 @@ _COMMAND_SIGNAL_RE = re.compile(
 # FEW-SHOT the exact parseable shapes (v2 below), never describe abstractly.
 # v2 scope: glm only until validated — one variable, one model.
 _DIALECT_TURN_NOTE_MODELS = ("glm4", "glm-4")
+
+# Fenced-dialect families (doc 012): served with native tools attached, yet
+# their real calls come out as ```bash fences in prose (deepseek-r1 heredocs,
+# hermes3). For these, a turn with ZERO native calls and zero textual-markup
+# blocks gets ONE re-parse with fences enabled — a bare fence from them is an
+# attempted call, not an illustration. Everyone else keeps the #3222 guard
+# (native models' fences are examples). Deliberately does NOT match native
+# DeepSeek-V/chat API models.
+_FENCED_DIALECT_MODELS = ("deepseek-r1", "hermes3", "hermes-3")
 
 
 def _message_signals_commands(text: str) -> bool:
@@ -4549,12 +4572,13 @@ async def stream_agent_loop(
             if _ody_doc_finetune_mode
             else round_response
         )
-        tool_blocks, used_native, converted_calls, failed_native_calls = _resolve_tool_blocks(
+        tool_blocks, used_native, converted_calls, failed_native_calls, used_fenced_fallback = _resolve_tool_blocks(
             _normalized_doc_round,
             native_tool_calls,
             round_num,
             is_api_model=(_is_api_model and not guide_only),
             allow_fenced_for_api=_ody_doc_finetune_mode,
+            fenced_fallback=any(k in (model or "").lower() for k in _FENCED_DIALECT_MODELS),
         )
         if _ody_doc_stream_create_mode and tool_blocks:
             create_idx = next(
@@ -4716,7 +4740,7 @@ async def stream_agent_loop(
         # model with no real native_tool_calls) must not be stripped from the
         # persisted text either — otherwise it streams once and then disappears
         # on reload (#3222 follow-up).
-        cleaned_round = strip_tool_blocks(round_response, skip_fenced=(_is_api_model and not used_native and not guide_only)).strip()
+        cleaned_round = strip_tool_blocks(round_response, skip_fenced=(_is_api_model and not used_native and not guide_only and not used_fenced_fallback)).strip()
         round_texts.append(cleaned_round)
         if _ody_qwen_finetune_model and not tool_blocks and cleaned_round:
             yield f'data: {json.dumps({"delta": cleaned_round})}\n\n'

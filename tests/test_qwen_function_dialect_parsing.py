@@ -79,7 +79,7 @@ def test_dialect_is_stripped_from_display_text():
 def test_resolve_tool_blocks_executes_dialect_for_native_models():
     # End-to-end through the agent loop's resolver: a native-tools model with
     # zero native calls but leaked Qwen markup must still produce a real block.
-    blocks, used_native, converted, failed = al._resolve_tool_blocks(
+    blocks, used_native, converted, failed, _ = al._resolve_tool_blocks(
         QWEN_BASH, [], round_num=1, is_api_model=True
     )
     assert used_native is False
