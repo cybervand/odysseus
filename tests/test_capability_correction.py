@@ -22,6 +22,7 @@ OBSERVED = [
     "I don’t have permission to invoke bash, npm or any other command-line tool from this environment.",
     "I don’t have direct access to a shell or node runtime from within this environment.",
     "User wants to build site. Can't run shell. Need to explain steps.",
+    "Probably cannot execute commands. Better explain that we need correct project path.",
 ]
 
 

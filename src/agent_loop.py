@@ -3226,11 +3226,21 @@ from src.dialect_profiles import (  # noqa: E402
 _CAPABILITY_DENIAL_RE = re.compile(
     r"(?:can['’]?t|cannot|don['’]?t|do not|unable to|not able to|no way to|lack)\s+"
     r"(?:\w+\s+){0,3}?"
-    r"(?:permission|access|ability|shell|bash|terminal|command[- ]line|filesystem|file system)"
+    r"(?:permission|access|ability|shell|bash|terminal|command(?:s|[- ]line)?|filesystem|file system)"
     r"|(?:shell|bash|terminal|tools?)\s+(?:access\s+)?(?:is|are)\s+"
     r"(?:disabled|unavailable|not available|blocked)",
     re.IGNORECASE,
 )
+
+
+def _effective_cwd() -> str:
+    """The directory the shell and relative paths actually use (doc 008:
+    never report workspace=None when a real default exists)."""
+    try:
+        from src.tool_execution import agent_cwd
+        return agent_cwd()
+    except Exception:
+        return ""
 
 
 def _needs_capability_correction(messages, disabled_tools) -> bool:
@@ -3458,6 +3468,24 @@ async def stream_agent_loop(
         logger.info(
             f"[agent] dialect turn-taking note v2 (few-shot) injected ({_dialect_profile.family})"
         )
+
+    # The working directory must never be invisible state: without this line
+    # models GUESS their location from debris (gpt-oss read an npm error's
+    # log path and concluded its workspace was /app/data/.npm/_logs). When a
+    # workspace is set, the system prompt already covers it; when not, state
+    # the effective default once per turn.
+    if not workspace and not guide_only:
+        _cwd = _effective_cwd()
+        if _cwd:
+            messages = _insert_before_latest_user(messages, {
+                "role": "system",
+                "content": (
+                    f"Working directory: {_cwd} — relative paths resolve here, "
+                    "the shell starts here, and project folders you created "
+                    "live directly inside it. Never infer your location from "
+                    "log paths in error output."
+                ),
+            })
 
     # Doc 008 policy delta: break stale "I have no shell" self-narrative.
     _capability_correction_fired = False
@@ -4357,7 +4385,9 @@ async def stream_agent_loop(
         _policy_snapshot = {
             "terminal": "bash" in _tool_names_sent,
             "web_search": "web_search" in _tool_names_sent,
-            "workspace": workspace or None,
+            # Effective working dir, never None — "workspace=None" sent a
+            # model hunting for its own location (doc 008).
+            "workspace": workspace or _effective_cwd(),
             "disabled": sorted(disabled_tools) if disabled_tools else [],
             "forced": sorted(forced_tools) if forced_tools else [],
             "tools_sent": len(_tool_names_sent),
