@@ -84,6 +84,19 @@ async def test_traversal_and_secrets_404(workspace):
 
 
 @pytest.mark.anyio
+async def test_html_gets_back_overlay_but_assets_do_not(workspace):
+    async with _client(_app()) as c:
+        html = await c.get("/preview/coffee_site/index.html")
+        css = await c.get("/preview/coffee_site/styles.css")
+    assert "Back to Odysseus" in html.text
+    assert html.text.rstrip().endswith("</body>") or "&#8592; Odysseus</a>" in html.text
+    assert "Odysseus" not in css.text
+    # Display-only chrome — the file on disk is untouched.
+    on_disk = (workspace / "coffee_site" / "index.html").read_text(encoding="utf-8")
+    assert "Odysseus" not in on_disk
+
+
+@pytest.mark.anyio
 async def test_missing_file_404(workspace):
     async with _client(_app()) as c:
         r = await c.get("/preview/coffee_site/nope.js")

@@ -10,7 +10,7 @@ import mimetypes
 import os
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from src.auth_helpers import require_user
 from src.constants import DATA_DIR
@@ -18,6 +18,16 @@ from src.constants import DATA_DIR
 router = APIRouter()
 
 _DENY_BASENAMES = {"app.db", "app.db-wal", "app.db-shm"}
+
+# Viewer chrome injected into served HTML only (never written to disk):
+# without it a preview tab is a dead end — no way back to the chat.
+_BACK_OVERLAY = (
+    b'<a href="/" style="position:fixed;bottom:16px;right:16px;'
+    b'z-index:2147483647;background:#1c1c1e;color:#fff;padding:8px 14px;'
+    b'border-radius:999px;font:600 13px system-ui,sans-serif;'
+    b'text-decoration:none;opacity:.85;box-shadow:0 2px 10px rgba(0,0,0,.35)"'
+    b' title="Back to Odysseus">&#8592; Odysseus</a>'
+)
 
 
 def _resolve_preview_path(rel: str) -> str:
@@ -54,4 +64,16 @@ async def preview_file(rel_path: str, request: Request):
     if _denied(target) or not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="Not found")
     media_type = mimetypes.guess_type(target)[0] or "application/octet-stream"
+    if media_type == "text/html":
+        try:
+            with open(target, "rb") as f:
+                raw = f.read()
+        except OSError:
+            raise HTTPException(status_code=404, detail="Not found")
+        idx = raw.lower().rfind(b"</body>")
+        if idx != -1:
+            raw = raw[:idx] + _BACK_OVERLAY + raw[idx:]
+        else:
+            raw = raw + _BACK_OVERLAY
+        return Response(content=raw, media_type="text/html")
     return FileResponse(target, media_type=media_type)
