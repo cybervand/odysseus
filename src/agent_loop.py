@@ -3189,13 +3189,12 @@ _COMMAND_SIGNAL_RE = re.compile(
 
 
 # Text-dialect families that fabricate tool results (screenplay habit).
-# EXPERIMENT RESULT (doc 012, rematch 3005): the abstract protocol note
-# ("emit ONE invocation, never write outputs") made glm4 WORSE — it changed
-# its emission shape (bare invocations → unparseable generic fences) and
-# fled to create_document. Emission dialects are prompt-sensitive; a v2 note
-# must SHOW the exact expected format (few-shot), not describe it. Disabled
-# until v2; rolled back in production same night.
-_DIALECT_TURN_NOTE_MODELS = ()
+# v1 EXPERIMENT (doc 012, rematch 3005): an ABSTRACT protocol note made glm4
+# worse — emission shape drifted to unparseable fences and it fled to
+# create_document. Lesson: dialects are prompt-sensitive; the note must
+# FEW-SHOT the exact parseable shapes (v2 below), never describe abstractly.
+# v2 scope: glm only until validated — one variable, one model.
+_DIALECT_TURN_NOTE_MODELS = ("glm4", "glm-4")
 
 
 def _message_signals_commands(text: str) -> bool:
@@ -3389,24 +3388,28 @@ async def stream_agent_loop(
             f"{len(_library_docs)} from other chats"
         )
 
-    # Doc 012: turn-taking note for text-dialect models. These families were
-    # never trained to stop-and-wait after a tool call — they write the whole
-    # screenplay including the world's lines (glm4 fabricated ls output
-    # BEFORE the real result arrived, rematch 21831). One explicit rule
-    # converts screenplay habit into turn-taking.
+    # Doc 012 v2: turn-taking note for text-dialect models — FEW-SHOT form.
+    # These families write the whole screenplay including the world's lines
+    # (glm4 fabricated ls output before the real result arrived). v1's
+    # abstract wording destabilized the emission dialect itself; v2 shows the
+    # exact parseable shapes so it anchors the dialect AND teaches the pause.
     if any(k in (model or "").lower() for k in _DIALECT_TURN_NOTE_MODELS):
         messages = _insert_before_latest_user(messages, {
             "role": "system",
             "content": (
-                "Tool protocol for this session: to act, emit exactly ONE tool "
-                "invocation and then END your reply immediately. NEVER write, "
-                "predict, or summarize a tool's output yourself — the system "
-                "executes the call and returns the REAL output to you in the "
-                "next turn. Then emit the next single invocation. One call per "
-                "reply, no imagined results."
+                "To use a tool, write the call EXACTLY like these examples, "
+                "then end your reply:\n\n"
+                "bash\nmkdir -p myfolder\n\n"
+                "or:\n\n"
+                'write_file "myfolder/file.txt" "the complete file content here"\n\n'
+                "One tool call per reply. After your reply ends, the system "
+                "executes the call and sends you the REAL output — never "
+                "write or predict a tool's output yourself. When the task is "
+                "complete and verified, reply with a short summary and no "
+                "tool call."
             ),
         })
-        logger.info("[agent] dialect turn-taking note injected")
+        logger.info("[agent] dialect turn-taking note v2 (few-shot) injected")
 
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
