@@ -327,24 +327,27 @@ def test_explicit_false_disables_even_for_admin():
 _CHAT_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "chat.js"
 
 
-def test_frontend_sends_allow_bash_only_when_explicitly_set():
-    """Tri-state allow_bash (doc 008 toggle-clobber fix): chat.js sends a value
-    only for an explicit per-session choice (or legacy per-mode override, or
-    the workspace-intent force) and OMITS the field otherwise so the server's
-    defaults decide — the browser must not clobber API-created sessions."""
+def test_frontend_sends_displayed_bash_state_always():
+    """The toggle DISPLAYS the truth and the displayed state is always sent
+    (user principle, 2026-08-06: "if the default is ON then by default it
+    should be on — me clicking it shouldn't affect a default"). The
+    session-awareness lives in the CHECKBOX, not in omission: explicit
+    per-session choice first (app.js loadToolPref), mode default otherwise,
+    and the mode is adopted from the session on open (sessions.js), which is
+    what protects API-created agent sessions from a chat-mode default."""
     source = _CHAT_JS.read_text(encoding="utf-8")
-    # The old unconditional send must be gone.
-    assert "fd.append('allow_bash', el('bash-toggle').checked ? 'true' : 'false')" not in source, (
-        "Frontend must not unconditionally send allow_bash from the global toggle"
+    assert "fd.append('allow_bash', el('bash-toggle').checked ? 'true' : 'false')" in source, (
+        "Frontend must send the displayed toggle state every turn"
     )
-    # Explicit choices still send BOTH true and false…
-    assert "_bashPref ? 'true' : 'false'" in source
-    # …reading the per-session tri-state pref…
-    assert "getSessionToolPref(streamSessionId, 'bash')" in source
-    # …with the legacy per-mode override honored for pre-migration users…
-    assert "_legacyToggles[_legacyKey] ? 'true' : 'false'" in source
-    # …and the workspace-intent force intact.
-    assert "fd.append('allow_bash', 'true')" in source
+    assert "fd.set('allow_bash', 'true')" in source  # workspace-intent force
+    app_js = _CHAT_JS.parent.parent / "app.js"
+    assert "getSessionToolPref(sid, 'bash')" in app_js.read_text(encoding="utf-8"), (
+        "Checkbox truth must consult the per-session choice first"
+    )
+    sessions_js = _CHAT_JS.parent / "sessions.js"
+    assert "__odysseusSetChatMode?.(_m)" in sessions_js.read_text(encoding="utf-8"), (
+        "Opening a session must adopt its persisted mode so mode defaults apply correctly"
+    )
 
 
 def test_frontend_sends_explicit_allow_web_search_false_in_agent_mode():

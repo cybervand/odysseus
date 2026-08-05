@@ -1838,8 +1838,15 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     }
     currentSessionId = id;
     try { window.__odysseusLastSelectedSessionId = id; } catch (_) {}
+    // Adopt the SESSION's persisted mode so the composer (and the tool
+    // toggles' mode defaults) reflect the session being viewed — the
+    // toggle always displays the truth of what will be sent (doc 008).
+    try {
+      const _m = sessions.find(s => s.id === id)?.mode;
+      if (_m === 'agent' || _m === 'chat') window.__odysseusSetChatMode?.(_m);
+    } catch (_) {}
     // Repaint tool toggles from this session's stored prefs (per-session
-    // bash tri-state — doc 008 toggle-clobber fix).
+    // bash choice wins over the mode default).
     try { window.__odysseusSyncToolToggles?.(); } catch (_) {}
     // Identify Assistant / task-output sessions so we don't "trap" the user
     // there on return. Skipped from both `lastSessionId` persistence and the
