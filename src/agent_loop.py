@@ -3460,7 +3460,9 @@ async def stream_agent_loop(
         )
 
     # Doc 008 policy delta: break stale "I have no shell" self-narrative.
+    _capability_correction_fired = False
     if not guide_only and _needs_capability_correction(messages, disabled_tools):
+        _capability_correction_fired = True
         messages = _insert_before_latest_user(messages, {
             "role": "system",
             "content": (
@@ -3816,7 +3818,12 @@ async def stream_agent_loop(
     # including the whole browser suite but no bash/write_file, and the model
     # truthfully reported it couldn't touch the filesystem. Selection is not
     # permission: route-level disabled_tools still filters afterwards.
-    if not guide_only and _message_signals_commands(_last_user):
+    # The capability-correction note promises the model its shell is back —
+    # the relevance filter must not make that a lie (terminal=False with
+    # disabled_n=0 is the "not offered" signature, gate #4).
+    if not guide_only and (
+        _message_signals_commands(_last_user) or _capability_correction_fired
+    ):
         if _relevant_tools is None:
             from src.tool_index import ALWAYS_AVAILABLE
             _relevant_tools = set(ALWAYS_AVAILABLE)
