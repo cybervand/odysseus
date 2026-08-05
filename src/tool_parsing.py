@@ -1454,6 +1454,21 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
                 i += 1
                 continue
             tool, rest = m.group(1), (m.group(2) or "").strip()
+            # Colon-inline variant (rematch 29929): `bash: mkdir -p dir` on one
+            # line. The colon is a strong invocation signal; plain space after
+            # the name stays unparsed (prose like "bash is great" must not run).
+            if tool in ("bash", "python") and rest.startswith(":") and rest[1:].strip():
+                from src.tool_schemas import function_call_to_tool_block
+                _cmd = rest[1:].strip()
+                block = function_call_to_tool_block(
+                    tool, json.dumps({"command": _cmd} if tool == "bash" else {"code": _cmd})
+                )
+                if block:
+                    blocks.append(block)
+                i += 1
+                continue
+            if tool == "write_file" and rest.startswith(":"):
+                rest = rest[1:].strip()
             if tool in ("bash", "python") and not rest:
                 # Command is the next non-empty line (both specimens single-line).
                 j = i + 1

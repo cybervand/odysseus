@@ -51,6 +51,22 @@ def test_rematch_paren_call_specimen():
     assert wf.content.rstrip().endswith("</html>")
 
 
+def test_colon_inline_specimen():
+    # Verbatim shape from rematch 29929: `bash: mkdir -p dir` on one line,
+    # embedded in step narration.
+    text = (
+        "Step 1: Creating directory `coffee_glm4-9b_29929`\n"
+        "bash: mkdir -p coffee_glm4-9b_29929\n\n"
+        "Step 2: Writing index.html for the landing page"
+    )
+    blocks = parse_tool_blocks(text)
+    assert len(blocks) == 1
+    assert blocks[0].tool_type == "bash"
+    assert "mkdir -p coffee_glm4-9b_29929" in blocks[0].content
+
+
 def test_prose_mentioning_tools_is_not_parsed():
     assert parse_tool_blocks("I could use bash for this, or maybe write_file later.") == []
     assert parse_tool_blocks("The bash tool is great.") == []
+    # Plain space after the name must stay unparsed — only colon or newline forms run.
+    assert parse_tool_blocks("bash is my favourite shell") == []
