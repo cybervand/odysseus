@@ -1896,6 +1896,25 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       const reader = res.body.getReader();
       _sendPerf.mark('reader_ready');
       _sendPerf.report('reader_ready');
+      // Liveness watchdog: a killed server leaves the SSE connection SILENT,
+      // not errored — the spinner counted 4m+ on a run that died with a
+      // container restart. Silence alone is no proof of death (npm install
+      // is silent for minutes), so on sustained silence we ask the server's
+      // own run registry: stream open + run absent = orphaned stream.
+      let _lastStreamByteAt = Date.now();
+      abortCtrl._livenessWatchdog = setInterval(async () => {
+        if (Date.now() - _lastStreamByteAt < 30000) return;
+        try {
+          const r = await fetch(`${API_BASE}/api/chat/runs`);
+          if (!r.ok) return; // can't tell (non-admin etc.) — keep waiting
+          const j = await r.json();
+          const alive = (j.runs || []).some(x => x.session_id === streamSessionId);
+          if (!alive) {
+            abortCtrl._reason = 'run-orphaned';
+            try { abortCtrl.abort(); } catch (_) {}
+          }
+        } catch (_) { /* server unreachable (mid-restart) — next tick decides */ }
+      }, 10000);
       const decoder = new TextDecoder();
       let buffer = '';
       let metrics = null;
@@ -2200,6 +2219,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       while (true) {
         const { done, value } = await reader.read();
         _touchStreamActivity(streamSessionId);
+        _lastStreamByteAt = Date.now();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -3832,6 +3852,40 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
             return;
           }
 
+          if (abortReason === 'run-orphaned') {
+            // The server's run registry no longer knows this run (restart or
+            // kill) while our stream sat silent — finalize the orphaned
+            // spinners honestly instead of counting forever.
+            document.querySelectorAll('.agent-thread-node.running').forEach(node => {
+              if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
+              if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
+              node.classList.remove('running');
+              const wave = node.querySelector('.agent-thread-wave');
+              if (wave) wave.textContent = '';
+              const icon = node.querySelector('.agent-thread-icon');
+              if (icon) icon.textContent = '■';
+              if (!node.querySelector('.agent-thread-status')) {
+                const header = node.querySelector('.agent-thread-header');
+                if (header) {
+                  const s = document.createElement('span');
+                  s.className = 'agent-thread-status';
+                  s.textContent = 'interrupted';
+                  header.appendChild(s);
+                }
+              }
+            });
+            document.querySelectorAll('.agent-thread.streaming').forEach(t => t.classList.remove('streaming'));
+            const orphanMsg = 'Run no longer exists on the server (interrupted — likely a restart). Partial work is preserved on disk.';
+            if (holder) {
+              const note = document.createElement('div');
+              note.className = 'stopped-indicator';
+              note.innerHTML = `<span style="opacity:0.75;">[${orphanMsg}]</span>`;
+              holder.querySelector('.body').appendChild(note);
+            }
+            if (currentAbort === abortCtrl) currentAbort = null;
+            return;
+          }
+
           if (abortReason === 'stale-local') {
             const staleMsg = 'Stream connection ended. Composer unlocked; send again if needed.';
             if (holder && !accumulated) {
@@ -3939,6 +3993,10 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       clearResponseTimeout();
       clearProcessingProbe();
       clearFirstTokenWaitTimers();
+      if (abortCtrl._livenessWatchdog) {
+        clearInterval(abortCtrl._livenessWatchdog);
+        abortCtrl._livenessWatchdog = null;
+      }
       _activeStreams.delete(streamSessionId);
       if (_streamSessionId === streamSessionId) _streamSessionId = null;
       _syncForegroundStreamGlobals();
