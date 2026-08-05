@@ -85,7 +85,23 @@ pattern? raw markup shape?
      system prompt → per-run improvisation is the expected outcome, not a
      quirk. Community-proven anchor (MFDoom template): bare-JSON
      {name, parameters} — exactly Pattern 3d, parsed in the PRIMARY pass.
-  4. Few-shot bare-JSON turn-note shipped → rematch 3 pending.
+  4. Few-shot bare-JSON turn-note shipped (fencedfb3). Rematch 3 CSV said
+     1 file; rematch 4 CSV said 0.
+  5. **MEASUREMENT BUG FOUND — graded verdicts were wrong.** The rematch
+     scripts grade at the 420s stream cut, but buffered runs OUTLIVE the
+     disconnect: rematch 3's run kept working ~13 min past the cut and
+     FINISHED THE JOB — 3/3 real files on disk (index.html 2857B,
+     styles.css 1759B, app.js 589B), via THREE write idioms (bare-JSON
+     write_file, cat-heredocs, split write_file-heredocs). Rematch 4 had
+     1+ file and was still writing when checked. GLM dirs re-checked:
+     unchanged — GLM genuinely stops; its plateau verdict stands. The bug
+     specifically penalizes slow reasoners that keep working. Fix:
+     rematch scripts now drain /api/chat/runs (up to 15 min) before
+     grading. Tier-1 caveat: any slow thinking model's gauntlet numbers
+     from before this fix are lower bounds.
+  6. deepseek-r1:14b REAL status: full task completion with the complete
+     stack (fenced fallback + heredoc splitter + bare-JSON note +
+     micro-step driver) — just slower than the old observation window.
 - 2026-08-05 — REGISTRY: src/dialect_profiles.py is now THE index (doc
   009 "profiles as data" delivered). Turn notes, fenced-fallback flags,
   pattern assignments, and diagnosed-only families all live in one
