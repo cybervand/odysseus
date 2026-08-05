@@ -1,6 +1,8 @@
 # 010 — Project preview: display and run what the agent built
 
-**Status:** Draft — approved direction (user, 2026-08-04), not yet built
+**Status:** Tier 1 BUILT 2026-08-05 (routes/preview_routes.py — /preview/*
+with DATA_DIR confinement, dir→index.html, secrets denied; tests in
+tests/test_preview_route.py). Tiers 2-3 not yet built.
 
 ## Problem
 
