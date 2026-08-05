@@ -144,3 +144,25 @@ def test_strip_mirror_removes_executed_fence():
     assert "echo dialect-probe-1" not in stripped or "```bash" not in stripped
     kept = strip_tool_blocks(P1, skip_fenced=True)
     assert "```bash" in kept
+
+
+def test_deepseek_turn_note_examples_parse_via_pattern_3d():
+    # Doc 012 v1 lesson, formalized: the few-shot shapes we TEACH must parse
+    # through our own chain — in the PRIMARY (skip_fenced) pass, since bare
+    # JSON needs no fallback. If someone edits the note into an unparseable
+    # shape, this fails before any rematch has to discover it.
+    blocks = parse_tool_blocks(al._DEEPSEEK_TURN_NOTE, skip_fenced=True)
+    assert [b.tool_type for b in blocks] == ["bash", "write_file"]
+    assert "mkdir -p myfolder" in blocks[0].content
+    assert blocks[1].content.startswith("myfolder/file.txt")
+
+
+def test_deepseek_reply_with_think_block_parses():
+    reply = (
+        "<think>I need to create the directory first.</think>\n"
+        '{"name": "bash", "parameters": {"command": "mkdir -p coffee_x"}}\n'
+    )
+    blocks = parse_tool_blocks(reply, skip_fenced=True)
+    assert len(blocks) == 1
+    assert blocks[0].tool_type == "bash"
+    assert blocks[0].content == "mkdir -p coffee_x"

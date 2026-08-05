@@ -3210,6 +3210,28 @@ _COMMAND_SIGNAL_RE = re.compile(
 # v2 scope: glm only until validated — one variable, one model.
 _DIALECT_TURN_NOTE_MODELS = ("glm4", "glm-4")
 
+# DeepSeek-R1 distills were never trained on function calling and the Ollama
+# registry template renders tool CALLS (DSML tokens) but never the tool
+# DEFINITIONS — the model literally never sees the schemas, so it improvises
+# a different serialization every run (bash-fence write_file heredocs one
+# run, create_document escape the next; ollama/ollama#8517, #10935). The
+# community-proven anchor (MFDoom tool-calling template) is the bare-JSON
+# shape — which Pattern 3d already parses in the PRIMARY pass, no fallback
+# needed. Few-shot it, per the doc 012 v1 lesson: exact shapes, never
+# abstract descriptions.
+_DEEPSEEK_TURN_NOTE = (
+    "To use a tool, reply with ONE JSON call EXACTLY like these examples, "
+    "then end your reply:\n\n"
+    '{"name": "bash", "parameters": {"command": "mkdir -p myfolder"}}\n\n'
+    '{"name": "write_file", "parameters": {"path": "myfolder/file.txt", '
+    '"content": "the complete file content here"}}\n\n'
+    "One tool call per reply, as plain text after your thinking — no code "
+    "fences, no shell commands named write_file. After your reply ends, the "
+    "system executes the call and sends you the REAL output — never write "
+    "or predict a tool's output yourself. When the task is complete and "
+    "verified, reply with a short summary and no tool call."
+)
+
 # Fenced-dialect families (doc 012): served with native tools attached, yet
 # their real calls come out as ```bash fences in prose (deepseek-r1 heredocs,
 # hermes3). For these, a turn with ZERO native calls and zero textual-markup
@@ -3416,7 +3438,8 @@ async def stream_agent_loop(
     # (glm4 fabricated ls output before the real result arrived). v1's
     # abstract wording destabilized the emission dialect itself; v2 shows the
     # exact parseable shapes so it anchors the dialect AND teaches the pause.
-    if any(k in (model or "").lower() for k in _DIALECT_TURN_NOTE_MODELS):
+    _mlower = (model or "").lower()
+    if any(k in _mlower for k in _DIALECT_TURN_NOTE_MODELS):
         messages = _insert_before_latest_user(messages, {
             "role": "system",
             "content": (
@@ -3433,6 +3456,12 @@ async def stream_agent_loop(
             ),
         })
         logger.info("[agent] dialect turn-taking note v2 (few-shot) injected")
+    elif "deepseek-r1" in _mlower:
+        messages = _insert_before_latest_user(messages, {
+            "role": "system",
+            "content": _DEEPSEEK_TURN_NOTE,
+        })
+        logger.info("[agent] dialect turn-taking note v2 (few-shot, deepseek bare-JSON) injected")
 
     _t0 = time.time()
     _needs_admin = _detect_admin_intent(messages)
