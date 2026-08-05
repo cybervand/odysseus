@@ -1450,7 +1450,26 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
     elif tool_type == "get_workspace":
         content = ""
     elif tool_type == "write_file":
-        content = args.get("path", "") + "\n" + args.get("content", "")
+        # A write with MISSING content is a failed call, not an empty file.
+        # The old silent "" default wrote 0-byte files whenever a model
+        # renamed the key or the backend dropped the argument (qwen R0
+        # autopsy, doc 013) — and the model never learned anything went
+        # wrong. Accept common aliases; otherwise reject so the loop's
+        # failed-call feedback makes the model retry with content.
+        body = args.get("content")
+        if body is None:
+            for _alias in ("contents", "text", "body", "file_content", "data"):
+                if args.get(_alias) is not None:
+                    body = args[_alias]
+                    break
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body)
+        if body is None or body == "":
+            logger.warning(
+                f"write_file call without content (arg keys: {list(args.keys())}); rejecting for retry"
+            )
+            return None
+        content = args.get("path", "") + "\n" + str(body)
     elif tool_type == "edit_file":
         content = json.dumps(args)
     elif tool_type == "apply_patch":
