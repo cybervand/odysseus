@@ -4872,17 +4872,26 @@ async def stream_agent_loop(
                     yield f'data: {json.dumps({"delta": _note})}\n\n'
                     full_response += _note
                     _verifier_fix_pending = True
+                    # Concrete micro-step driving (doc 012, rematch 6979):
+                    # told "fix these", glm4 responded by running ls three
+                    # times to CONFIRM the files were missing, then stopped.
+                    # Abstract repair instructions bounce off small models —
+                    # command the first flagged item as the exact next single
+                    # action, and forbid re-verification of known state.
                     messages.append({
                         "role": "system",
                         "content": (
                             "An independent verifier reviewed your work against the "
                             "original request and flagged:\n- " + "\n- ".join(_vfail) +
-                            "\n\nFix these now using tools. If an item genuinely cannot "
-                            "be fixed on this system (e.g. missing system software), say "
-                            "so explicitly in one line instead of fixing it. Then close "
-                            "with a SHORT completion note — 2-3 sentences on what "
-                            "changed. Do NOT restate your full report; it is already "
-                            "visible above."
+                            "\n\nThese are CONFIRMED missing or broken — do not run ls "
+                            "or read anything to re-check them. Your next reply must be "
+                            "exactly ONE tool call that fixes the FIRST flagged item "
+                            "(for a missing file: write_file with its full path and its "
+                            "COMPLETE content). Then continue, one flagged item per "
+                            "reply, until all are fixed. If an item genuinely cannot be "
+                            "fixed on this system, say so in one line instead. When all "
+                            "are done, close with a 2-3 sentence completion note; do "
+                            "NOT restate your full report."
                         ),
                     })
                     # Require fresh effectful work before verifying again, so we
