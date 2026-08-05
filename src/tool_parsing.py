@@ -1282,6 +1282,61 @@ _LLAMA_JSON_CALL_RE = re.compile(r'\{\s*"name"\s*:\s*"[a-zA-Z_][\w-]*"')
 # Pattern 3e: a known tool name at line start, alone or with quoted args.
 _BARE_INVOCATION_RE = re.compile(r"^(bash|python|write_file|read_file|edit_file)\b[ \t]*(.*)$")
 
+# DeepSeek-R1 fence-internal write pseudo-command (doc 012): inside ONE
+# ```bash fence it interleaves real shell lines with
+#   write_file <path> -- <<EOL          (also: write_file --path <path> <<EOL)
+#   ...content...
+#   EOL
+# Run as shell that line is a guaranteed 126/127 ("write_file: not found"),
+# so splitting the fence — shell lines stay bash, each heredoc segment
+# becomes a real write_file block — is safe for every model, not just the
+# fenced-dialect families.
+_WRITE_HEREDOC_RE = re.compile(
+    r"^[ \t]*write_file\s+(?:--path\s+)?(\"[^\"]+\"|'[^']+'|\S+?)\s*(?:--)?\s*<<-?\s*['\"]?(\w+)['\"]?[ \t]*$",
+    re.MULTILINE,
+)
+
+
+def _split_bash_write_heredocs(script: str) -> List[ToolBlock]:
+    """Split a bash fence containing write_file heredoc pseudo-commands.
+
+    Preserves order: shell lines accumulated before a write_file segment are
+    flushed as a bash block first (mkdir before the write that needs the
+    directory). An unterminated heredoc (stream cut mid-fence) still writes
+    the collected body — a truncated file beats a dropped one.
+    """
+    out: List[ToolBlock] = []
+    shell: List[str] = []
+
+    def _flush():
+        chunk = "\n".join(shell).strip()
+        del shell[:]
+        if chunk and any(
+            ln.strip() and not ln.strip().startswith("#") for ln in chunk.split("\n")
+        ):
+            out.append(ToolBlock("bash", chunk))
+
+    lines = script.split("\n")
+    i = 0
+    while i < len(lines):
+        m = _WRITE_HEREDOC_RE.match(lines[i])
+        if m:
+            path = m.group(1).strip("\"'")
+            term = m.group(2)
+            body = []
+            i += 1
+            while i < len(lines) and lines[i].strip() != term:
+                body.append(lines[i])
+                i += 1
+            i += 1  # past the terminator (or end, if unterminated)
+            _flush()
+            out.append(ToolBlock("write_file", path + "\n" + "\n".join(body)))
+        else:
+            shell.append(lines[i])
+            i += 1
+    _flush()
+    return out
+
 
 def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
     """Extract executable tool blocks from LLM response text.
@@ -1349,6 +1404,9 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
                 if block:
                     blocks.append(block)
                     continue
+            if tag == "bash" and _WRITE_HEREDOC_RE.search(content):
+                blocks.extend(_split_bash_write_heredocs(content))
+                continue
             blocks.append(ToolBlock(tag, content))
 
     # Pattern 2: [TOOL_CALL] blocks (only if no fenced blocks found)
