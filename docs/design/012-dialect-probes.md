@@ -52,3 +52,18 @@ pattern? raw markup shape?
   - GLM status: dialect parsing DONE (both shapes); remaining =
     fabrication/persistence → verifier-driven continuation +
     plan-then-execute, with a format-example note as v2.
+- 2026-08-05 — GLM campaign closed at rematch 8 (stopping rule). Final:
+  - Shipped along the way, all models benefit: v2 few-shot turn-note
+    (fixed turn-taking — zero fabricated outputs from rematch 5 on),
+    colon-inline + generalized write parser (SIX serialization shapes,
+    one branch), verifier micro-step driver (commands the first flagged
+    item as the exact next call; creation-type flags lead, verification
+    last — the day-one gpt-oss "third key", finally built).
+  - Best run: real index.html 2535B + honest incompleteness report.
+    Worst run (same build!): 14 calls of pure mkdir/ls anxiety, zero
+    writes emitted.
+  - VERDICT: harness deterministic, model stochastic. glm4:9b =
+    single-file capable, multi-file unreliable at 9B — per-run behavior
+    variance dominates. Not a parser problem anymore. Revisit with a
+    larger GLM or a stronger judge; every fix built for it stays and
+    serves the fleet.
