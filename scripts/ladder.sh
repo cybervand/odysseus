@@ -23,9 +23,11 @@ CLARIFIERS=("$@")
 BUSINESSES=("barbershop" "bike repair shop" "bakery" "plant nursery" \
   "tattoo studio" "used bookstore" "climbing gym" "ramen bar" \
   "record store" "pet grooming salon")
-BIZ="${BUSINESSES[$((RANDOM % ${#BUSINESSES[@]}))]}"
+# LADDER_BIZ / LADDER_RND pin the rotation so a dry-run-approved prompt is
+# byte-identical to what actually runs.
+BIZ="${LADDER_BIZ:-${BUSINESSES[$((RANDOM % ${#BUSINESSES[@]}))]}}"
 
-SLUG=$(echo "$MODEL" | tr ":./ " "----"); RND=$RANDOM
+SLUG=$(echo "$MODEL" | tr ":./ " "----"); RND=${LADDER_RND:-$RANDOM}
 RUNG="R${#CLARIFIERS[@]}"
 
 # R0 base — the lazy human, verbatim shape:
@@ -47,6 +49,14 @@ for C in "${CLARIFIERS[@]}"; do
     *) echo "unknown clarifier: $C" >&2; exit 1 ;;
   esac
 done
+
+# Approval gate: LADDER_DRYRUN=1 composes and prints WITHOUT submitting —
+# show the user, get approval, then rerun with LADDER_BIZ/LADDER_RND pinned.
+if [ "${LADDER_DRYRUN:-0}" = "1" ]; then
+  echo "DRYRUN $MODEL $RUNG biz='$BIZ' rnd=$RND"
+  echo "PROMPT: $PROMPT"
+  exit 0
+fi
 
 # --- preflight: no live runs (doc 012 contamination rule) ---
 PRE=$(curl -s -H "Authorization: Bearer $TOKEN" "$URL/api/chat/runs" | grep -c session_id)
