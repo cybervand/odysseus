@@ -30,8 +30,11 @@ BIZ="${LADDER_BIZ:-${BUSINESSES[$((RANDOM % ${#BUSINESSES[@]}))]}}"
 SLUG=$(echo "$MODEL" | tr ":./ " "----"); RND=${LADDER_RND:-$RANDOM}
 RUNG="R${#CLARIFIERS[@]}"
 
-# R0 base — the lazy human, verbatim shape:
-PROMPT="build me a website for my local business, i want to have it pretty its for a $BIZ so i want you to get open source images from the net, i also want you make it with react etc"
+# R0 base — LADDER_PROMPT overrides (user-authored R0 wins over the
+# template; doc 013 records the official one). Template keeps the lazy
+# shape with rotating business for ad-hoc probes.
+PROMPT="${LADDER_PROMPT:-build me a website for my local business, i want to have it pretty its for a $BIZ so i want you to get open source images from the net, i also want you make it with react etc}"
+[ -n "${LADDER_PROMPT:-}" ] && BIZ="custom"
 
 # Clarifier catalog (doc 013 rung table). Add ONE new clarifier per rung.
 for C in "${CLARIFIERS[@]}"; do

@@ -20,10 +20,20 @@ its individual scars and asks which ones each model actually needs.
 
 ## Rungs
 
-- **R0 — lazy human** (verbatim, typos kept):
+- **R0 — lazy human, USER-AUTHORED 2026-08-05 (official, verbatim, typos
+  kept — supersedes the earlier template for the fleet sweep):**
   "build me a website for my local business, i want to have it pretty its
-  for a coffee shop so i want you to get open source images from the net,
-  i also want you make it with react etc"
+  for a company called Kaffe on the Moors so i want you to get open source
+  images from the net, i also want you make it with react vite, whatever
+  you need. i want it to have the price of the different coffees, and each
+  coffee will have its own image. i want you to come up with text for each
+  coffee type with exxaggerated speech like ''this coffee was lovingly
+  handcrafted by local farmers in X country and roasted by our expert
+  roasters to bring out the notes this coffee gives.''  and for coffee
+  that contains milk or chocolate to do something similar."
+  Notable: demands SPECIFIC content (per-coffee prices, images, marketing
+  copy) — directly punishes the scaffolds-forever class; a scaffold with
+  boilerplate scores zero content.
 - **R1..Rn — one clarifier per observed failure class.** Never add two
   clarifiers at once; a rung tests exactly one repair. Established
   clarifier catalog (from tier-1 scar tissue):
