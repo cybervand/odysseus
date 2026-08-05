@@ -4878,6 +4878,18 @@ async def stream_agent_loop(
                     # Abstract repair instructions bounce off small models —
                     # command the first flagged item as the exact next single
                     # action, and forbid re-verification of known state.
+                    # Order matters (rematch 5293): the judge listed a
+                    # "verify with ls" item FIRST and the driver marched the
+                    # model straight at it. Creation-type items lead;
+                    # verification-type items go last.
+                    def _fix_priority(item: str) -> int:
+                        low = item.lower()
+                        if any(k in low for k in ("verify", "ls -", "ls ", "show", "display", "check")):
+                            return 2
+                        if any(k in low for k in ("write", "creat", "missing", "file", ".css", ".js", ".html")):
+                            return 0
+                        return 1
+                    _vfail = sorted(_vfail, key=_fix_priority)
                     messages.append({
                         "role": "system",
                         "content": (
