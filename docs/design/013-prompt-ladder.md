@@ -77,6 +77,22 @@ latest on Ollama library, refresh where a newer family member exists,
 note that ladder results are per model VERSION (the database must record
 exact tags).
 
+## The solvability baseline (control arm, 2026-08-05)
+
+A Claude agent given the official R0 verbatim (no clarifiers, no extra
+context beyond a working directory) delivered the complete site in 8
+minutes / 46 tool calls: React 19 + Vite 6, built dist/ verified from a
+subpath, 12 priced drinks with individually written exaggerated copy,
+milk/chocolate variants badged, 17 open-license images HTTP-checked AND
+visually inspected (two mismatches rejected). Zero questions asked.
+
+Consequence: **the R0 prompt is proven sufficient.** Local-model failures
+at R0 are model deficits, not prompt defects; a model's rung count is its
+measured distance from demonstrated-possible. Judgment moves observed in
+the baseline that no clarifier can teach (image content verification,
+subpath-aware base config) mark the ceiling of what prompt engineering
+alone can recover.
+
 ## Endgame (user, 2026-08-05): profiles dissolve into the database
 
 With enough models × observed tool-calling behavior, hand-curated
