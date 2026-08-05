@@ -67,6 +67,20 @@ latest on Ollama library, refresh where a newer family member exists,
 note that ladder results are per model VERSION (the database must record
 exact tags).
 
+## Endgame (user, 2026-08-05): profiles dissolve into the database
+
+With enough models × observed tool-calling behavior, hand-curated
+profiles become unnecessary: the parser already knows which pattern fired
+every round — persist that per model tag and dialect detection becomes
+lookup + statistics, not match keys. dialect_profiles.py then shrinks to
+a CACHE of learned conclusions. What survives of "profiles": (a) cold
+start — first contact with an unknown model triggers the P1-P3 auto-probe
+battery and the model classifies itself; (b) interventions (turn notes,
+fenced fallback) are treatments with failure costs, not observations —
+they need confidence thresholds before auto-adoption, though treatment
+selection itself is learnable from rematch completion rates. This doc's
+database and doc 012's specimens are the first tables of that system.
+
 ## Results log
 
 - 2026-08-05 — R0 launched: deepseek-r1:14b (lazytest session, full
