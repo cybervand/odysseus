@@ -115,6 +115,15 @@ pattern? raw markup shape?
      wall clock? A finished-then-still-working run suggests the loop
      lacks a "done means stop" guard — upstream also plans a runaway
      detector (#3266 submodule); convergent need, candidate next fix.
+  8. **VERDICT — deepseek-r1:14b: tier-1 PASS.** Clean rematch 6 under
+     the full protocol (preflight empty + drain): 3/3 files (3541/394/540
+     bytes), 47 calls, 0 dialect fails. Clean-sample record for the
+     bare-JSON note build: 2/2 full passes (rematches 3 and 6). From
+     zero real actions ever to reliable completion in one day: fenced
+     fallback → heredoc splitter → bare-JSON few-shot note (research-
+     informed) → drain-aware grading. Lingering-run bug REPRODUCED on
+     rematch 6 (22k events, still executing after task completion;
+     cleared by restart) — termination guard is now the top fix.
 - 2026-08-05 — REGISTRY: src/dialect_profiles.py is now THE index (doc
   009 "profiles as data" delivered). Turn notes, fenced-fallback flags,
   pattern assignments, and diagnosed-only families all live in one
