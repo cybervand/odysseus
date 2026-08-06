@@ -1986,7 +1986,12 @@ def setup_chat_routes(
         if rec is None:
             if agent_runs.is_active(session_id):
                 return {"status": "streaming", "detached": True}
-            raise HTTPException(404, "No active stream for this session")
+            # "Nothing running" is a normal answer, not an error: the
+            # live-attach poller asks this every few seconds for the session
+            # on screen, and a 404 here spammed the browser console with
+            # red fetch errors on every idle chat. Clients gate on
+            # status === 'streaming', so a quiet 200 changes no behavior.
+            return {"status": "none"}
         return rec
 
     # ------------------------------------------------------------------ #
