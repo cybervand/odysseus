@@ -93,6 +93,34 @@ crash-equivalence (log survives "process death"), and multi-consumer
 independence. It is deliberately dependency-free so promotion into
 `src/` later is mechanical.
 
+## The timeline contract (user, 2026-08-06)
+
+The feed must be renderable as a full timeline — what the model thought,
+what ran, which tools, and how long each phase took:
+
+```
+19:00:01            User: hi build X for me
+19:00:01-19:00:30   Agent: thought: the user is asking me to build X...
+19:00:30-19:01:05   Agent: [tools: bash, python, find_images] replied: Hi! Absolutely...
+```
+
+This falls out of the log for free IF every event carries a timestamp
+and a kind. Canonical event kinds:
+
+| kind | payload | timeline meaning |
+|---|---|---|
+| user_msg | text | `HH:MM:SS User: ...` |
+| thinking | delta text | contiguous run → one `thought:` span (first..last ts) |
+| tool_start / tool_end | tool, args head / result head | collected per reply → `[tools: a, b]`; per-tool spans available |
+| reply | delta text | contiguous run → one `replied:` span |
+| run_state | started/done/interrupted | phase boundaries, badges |
+
+The CURRENT pipeline cannot produce this view: thinking deltas are
+unstamped, tool timing exists only in container logs, and durations die
+with the stream. In log-world the timeline is a pure function
+`render_timeline(events)` — proven in the spike, which reproduces the
+example above from raw events, to the second.
+
 ## Migration sketch (future, NOT this round)
 
 1. Introduce `feed_events` table + writer, DUAL-writing alongside the
