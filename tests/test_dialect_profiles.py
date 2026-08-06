@@ -16,17 +16,26 @@ from src.tool_parsing import parse_tool_blocks
 
 
 def test_every_turn_note_parses_through_our_own_chain():
-    # Doc 012 v1 lesson, formalized: the shapes a note TEACHES must parse via
-    # our chain — in the strictest pass (skip_fenced=True, api-model primary),
-    # so no note can depend on the fenced fallback to be understood.
+    # Doc 012 v1 lesson, formalized: the shapes a DIALECT note TEACHES must
+    # parse via our chain — in the strictest pass (skip_fenced=True,
+    # api-model primary), so no note can depend on the fenced fallback to be
+    # understood. BEHAVIORAL notes (conduct steering for models whose
+    # emission is already clean, e.g. gemma4's content-mute note) must
+    # contain NO tool shapes at all — shapes in a behavioral note could
+    # destabilize a working dialect (the same v1 lesson, other direction).
     noted = [p for p in PROFILES if p.turn_note]
     assert noted, "expected at least the glm and deepseek notes"
     for p in noted:
         blocks = parse_tool_blocks(p.turn_note, skip_fenced=True)
         types = [b.tool_type for b in blocks]
-        assert types == ["bash", "write_file"], (
-            f"{p.family}: note examples parsed as {types}"
-        )
+        if p.note_kind == "behavioral":
+            assert types == [], (
+                f"{p.family}: behavioral note must teach no tool shapes, parsed {types}"
+            )
+        else:
+            assert types == ["bash", "write_file"], (
+                f"{p.family}: note examples parsed as {types}"
+            )
 
 
 def test_diagnosed_profiles_have_no_runtime_knobs():

@@ -3083,6 +3083,34 @@ def _round_clears_verifier_flag(tool_blocks: list) -> bool:
     )
 
 
+def _merge_reasoning_for_persist(cleaned_round: str, round_reasoning: str) -> str:
+    """Persist-side merge of native-channel reasoning into the round text.
+
+    Tag-models carry <think> in content and survive reload; native-channel
+    models (gemma4, DeepSeek API, vLLM reasoning-parser) lost their reasoning
+    from history entirely — a 232KB run persisted as "Done." (2026-08-06).
+    Returns the text for round_texts ONLY; the caller's cleaned_round must
+    stay bare (echoed reasoning reinforces looping — the DeepSeek lesson)."""
+    if round_reasoning and "<think>" not in cleaned_round:
+        return (f"<think>\n{round_reasoning.strip()}\n</think>\n\n" + cleaned_round).strip()
+    return cleaned_round
+
+
+def _reasoning_channel_intent(intent_text: str, round_reasoning: str, intent_re):
+    """Detect the content-mute stall: visible reply is a bare closer while
+    the REASONING tail ends on an intent phrase ("Let's start with...").
+    Returns (match, text_scanned) — (None, intent_text) when not stalling."""
+    if not round_reasoning or len(intent_text) >= 80 or "```" in intent_text:
+        return None, intent_text
+    rtail = round_reasoning.strip()[-600:]
+    rmatch = None
+    for m in intent_re.finditer(rtail):
+        rmatch = m
+    if rmatch is not None and rmatch.end() >= len(rtail) - 200:
+        return rmatch, rtail
+    return None, intent_text
+
+
 def _build_actions_snapshot(tool_events: list, limit: int = 8000) -> str:
     """Compact record of what the agent actually did this turn, for the
     verifier to judge against. One block per tool execution: the command and
@@ -4906,9 +4934,9 @@ async def stream_agent_loop(
         # persisted text either — otherwise it streams once and then disappears
         # on reload (#3222 follow-up).
         cleaned_round = strip_tool_blocks(round_response, skip_fenced=(_is_api_model and not used_native and not guide_only and not used_fenced_fallback)).strip()
-        round_texts.append(cleaned_round)
         # Doc 014 feed log (dual-write): per-round thinking + reply events
-        # with real timestamps — the timeline's raw material.
+        # with real timestamps — the timeline's raw material. Emit BEFORE the
+        # merge below so the feed keeps clean split channels.
         try:
             from src import feed_log
             if round_reasoning:
@@ -4917,6 +4945,8 @@ async def stream_agent_loop(
                 feed_log.emit(session_id, "reply", cleaned_round, incognito=incognito)
         except Exception:
             pass
+        # Native-channel reasoning → history (see _merge_reasoning_for_persist).
+        round_texts.append(_merge_reasoning_for_persist(cleaned_round, round_reasoning))
         # Checkpoint the accumulated reply every round (doc 013): a killed
         # run (deploy, crash) must leave what the user watched behind
         # instead of taking it to the grave. Promoted to a real history
@@ -5149,6 +5179,18 @@ async def stream_agent_loop(
             # tool doesn't pin us in a forever loop.
             _intent_text = _strip_think_blocks(cleaned_round).strip()
             _intent_match = _INTENT_RE.search(_intent_text) if _intent_text else None
+            # Reasoning-channel stall (gemma4, 2026-08-06): the model replied
+            # literally "Done." while its REASONING ended mid-plan ("Let's
+            # start with creating more templates") — content-only scanning
+            # cannot see that promise. When the visible reply is a bare closer
+            # and the reasoning TAIL ends on an intent phrase, treat it as the
+            # same unfinished-promise stall.
+            if _intent_match is None:
+                _rm, _rt = _reasoning_channel_intent(_intent_text, round_reasoning, _INTENT_RE)
+                if _rm is not None:
+                    _intent_match = _rm
+                    _intent_text = _rt
+                    logger.info("[agent] intent found in reasoning channel (reply was a bare closer)")
             # Only nudge when the round REALLY looks like an unfinished
             # promise: either a short response (<400 chars) containing an
             # intent phrase, or a response of ANY length that ENDS on one —

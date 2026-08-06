@@ -65,6 +65,13 @@ class DialectProfile:
     status: str
     patterns: Tuple[str, ...] = ()
     turn_note: Optional[str] = None
+    # "dialect": few-shot note anchoring EMISSION SHAPE — must contain the
+    #   exact parseable bash/write_file examples (tested through our chain).
+    # "behavioral": note steering conduct (channel discipline, turn-taking)
+    #   for models whose emission is already clean — must contain NO tool
+    #   shapes, so it cannot destabilize a working dialect (doc 012 v1
+    #   lesson: abstract wording about shapes broke GLM's emission).
+    note_kind: str = "dialect"
     fenced_fallback: bool = False
     notes: str = ""
 
@@ -113,6 +120,23 @@ PROFILES: Tuple[DialectProfile, ...] = (
         turn_note=_GLM_TURN_NOTE,
         notes="six serialization shapes parsed; campaign closed 2026-08-05 — "
               "9B compliance jitter remains, not a parser problem",
+    ),
+    DialectProfile(
+        family="gemma4-content-mute",
+        match=("gemma4",),
+        status="in-progress",
+        turn_note=(
+            "Your visible reply is the ONLY channel that counts — your "
+            "reasoning is invisible to the user and to the system. Never "
+            "reply with just 'Done.' or a bare closer: state in the reply "
+            "what you completed and what remains. If steps remain, do NOT "
+            "end your reply — make the next tool call instead. Plans that "
+            "exist only in your reasoning do not happen."
+        ),
+        note_kind="behavioral",
+        notes="reasoning-rich, content-mute: replied 'Done.' while the "
+              "reasoning channel ended mid-plan (2026-08-06 Vinterfjell run); "
+              "native tools 3/3 clean, thinking via native field",
     ),
     DialectProfile(
         family="llama3-json",
