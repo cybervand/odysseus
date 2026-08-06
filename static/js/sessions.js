@@ -2764,6 +2764,26 @@ async function _checkServerStream(sessionId) {
   }
 }
 
+// ── External-run live attach (doc 008) ──
+// A run started by ANOTHER client (API caller, harness, phone) streams
+// server-side while this tab shows nothing: the attach check only ran on
+// session ENTRY. Poll lightly while the tab is visible — resumeStream is
+// side-effect-free when there's no run (404 → false) and self-locking
+// (_resumingStreams), so calling it on an interval is safe. When a live
+// run exists for the session on screen, the buffer replays and the tab
+// goes live mid-run, same as the watcher script.
+setInterval(() => {
+  try {
+    if (document.visibilityState !== 'visible') return;
+    const sid = getCurrentSessionId();
+    if (!sid) return;
+    const cm = window.chatModule;
+    if (!cm || !cm.resumeStream) return;
+    if (cm.hasActiveStream && cm.hasActiveStream(sid)) return;
+    cm.resumeStream(sid);
+  } catch (_) { /* next tick */ }
+}, 6000);
+
 export function clearStreamComplete(sessionId) {
   _completedSessions.delete(sessionId);
   // Direct DOM cleanup in case _updateResearchDots misses it
