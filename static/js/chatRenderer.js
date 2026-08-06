@@ -2305,7 +2305,18 @@ export function addMessage(role, content, modelName, metadata) {
 
     // --- Agent multi-bubble reconstruction from saved metadata ---
     if (role === 'assistant' && metadata && metadata.tool_events && metadata.tool_events.length > 0) {
-      const roundTexts = metadata.round_texts || [];
+      const roundTexts = (metadata.round_texts || []).slice();
+      // Native-channel reasoning (gemma4, DeepSeek API) rides in
+      // metadata.thinking; older runs' round_texts carry no <think> blocks,
+      // so the thinking never rendered on reload (the "Done." bug,
+      // 2026-08-06). Graft it onto the first non-empty round — each round
+      // body already renders through processWithThinking.
+      if (metadata.thinking && !roundTexts.some(t => (t || '').includes('<think'))) {
+        let gi = roundTexts.findIndex(t => (t || '').trim());
+        if (gi === -1) { gi = 0; roundTexts.length = Math.max(roundTexts.length, 1); }
+        const tt = metadata.thinking_time ? ` time="${metadata.thinking_time}"` : '';
+        roundTexts[gi] = '<think' + tt + '>' + metadata.thinking + '</think>\n\n' + (roundTexts[gi] || '');
+      }
       const toolEvents = metadata.tool_events;
       let pendingAskUser = null;
       let lastWrap = null;
