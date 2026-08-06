@@ -42,6 +42,11 @@ ALWAYS_AVAILABLE = frozenset({
     "ask_user",
     # Write back to the active plan (tick steps done / revise) during execution.
     "update_plan",
+    # Verified image sourcing — small, broadly useful, and its absence made
+    # a model invent URLs while being ORDERED to use it by name (2026-08-06:
+    # the external Chroma index predated the tool, retrieval never returned
+    # it, the run's toolbox didn't contain it).
+    "find_images",
 })
 
 # Tools that the Personal Assistant always has access to during scheduled

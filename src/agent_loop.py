@@ -3793,6 +3793,19 @@ async def stream_agent_loop(
                 _relevant_tools.update(tools)
         logger.info(f"[tool-rag] Keyword fallback selected: {sorted(_relevant_tools - ALWAYS_AVAILABLE)}")
 
+    # Name-mention override (doc 008 gate #4): when the user's message
+    # literally NAMES a tool, it must be offered — embeddings be damned.
+    # "use your find_images tool" retrieved fifteen image-flavored tools
+    # and not find_images (the external index predated it); the model,
+    # ordered to use a tool its toolbox lacked, silently substituted
+    # web_search and invented URLs (2026-08-06).
+    if not guide_only and _relevant_tools is not None and _last_user:
+        _lu = _last_user.lower()
+        from src.agent_tools import TOOL_TAGS as _ALL_TAGS
+        for _t in _ALL_TAGS:
+            if len(_t) >= 4 and _t in _lu:
+                _relevant_tools.add(_t)
+
     # If deterministic domain detection fired, seed the corresponding domain
     # tools into the selected tool set. This is not direct prompt-pack
     # injection: `_assemble_prompt()` still derives domain rules from the final
