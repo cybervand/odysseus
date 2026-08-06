@@ -3233,6 +3233,28 @@ _CAPABILITY_DENIAL_RE = re.compile(
 )
 
 
+# "I said I would, then didn't" detector. The pattern that breaks debug
+# loops on weak models (deepseek-v4-flash mid-2026): the model writes
+# "Let me tail the output to see the error" and then ends the turn with
+# no tool_calls. The intent is sincere but the function call gets dropped.
+# Match the common phrasings + an action verb that maps to an available
+# tool, so we don't nudge on harmless transitional text like "let me
+# know what you think".
+_INTENT_RE = re.compile(
+    # Anchor at line starts AND sentence boundaries — "…the menu. Let me
+    # search…" mid-paragraph is as much a promise as one on its own line
+    # (qwen's 428-char specimen was a single paragraph).
+    r"(?:^|\n|[.!?])\s*(?:let me|i'?ll|i will|i need to|we need to|need to|"
+    r"i should|we should|i must|we must|going to|let's)\s+"
+    r"(?:tail|check|investigate|look at|see|tail|read|fetch|inspect|"
+    r"verify|diagnose|examine|debug|capture|grab|pull|view|run|call|"
+    r"trigger|launch|start|kick off|stop|kill|restart|adopt|serve|"
+    r"register|adopt|list|search|find|query|hit|ping|test|use|perform|do)"
+    r"\b[^.\n]{0,140}",
+    re.IGNORECASE,
+)
+
+
 def _effective_cwd() -> str:
     """The directory the shell and relative paths actually use (doc 008:
     never report workspace=None when a real default exists)."""
@@ -4284,23 +4306,6 @@ async def stream_agent_loop(
     _intent_nudge_count = 0
     _MAX_INTENT_NUDGES = 2
 
-    # "I said I would, then didn't" detector. The pattern that breaks debug
-    # loops on weak models (deepseek-v4-flash mid-2026): the model writes
-    # "Let me tail the output to see the error" and then ends the turn with
-    # no tool_calls. The intent is sincere but the function call gets dropped.
-    # Match the common phrasings + an action verb that maps to an available
-    # tool, so we don't nudge on harmless transitional text like "let me
-    # know what you think".
-    _INTENT_RE = re.compile(
-        r"(?:^|\n)\s*(?:let me|i'?ll|i will|i need to|we need to|need to|"
-        r"i should|we should|i must|we must|going to|let's)\s+"
-        r"(?:tail|check|investigate|look at|see|tail|read|fetch|inspect|"
-        r"verify|diagnose|examine|debug|capture|grab|pull|view|run|call|"
-        r"trigger|launch|start|kick off|stop|kill|restart|adopt|serve|"
-        r"register|adopt|list|search|find|query|hit|ping|test|use|perform|do)"
-        r"\b[^.\n]{0,140}",
-        re.IGNORECASE,
-    )
     _awaiting_user = False  # set by ask_user → end the turn and wait for a choice
 
     # Document streaming state (persists across rounds)
@@ -5067,14 +5072,25 @@ async def stream_agent_loop(
             _intent_text = _strip_think_blocks(cleaned_round).strip()
             _intent_match = _INTENT_RE.search(_intent_text) if _intent_text else None
             # Only nudge when the round REALLY looks like an unfinished
-            # promise: short response (<400 chars), no fenced code/answer,
-            # and an action-intent phrase was matched. Long answers that
-            # happen to contain "let me know" are not stalls.
+            # promise: either a short response (<400 chars) containing an
+            # intent phrase, or a response of ANY length that ENDS on one —
+            # trailing "Let me start by searching..." then silence is a stall
+            # regardless of how much preamble came first (qwen3-coder shipped
+            # a 428-char pure announcement that sailed past the old cap,
+            # 2026-08-06). Fenced code anywhere means a real answer.
+            _last_intent = None
+            if _intent_match is not None:
+                for _m in _INTENT_RE.finditer(_intent_text):
+                    _last_intent = _m
+            _ends_on_promise = (
+                _last_intent is not None
+                and _last_intent.end() >= len(_intent_text) - 200
+            )
             _looks_like_promise = (
                 not guide_only
                 and _intent_match is not None
-                and len(_intent_text) < 400
                 and "```" not in _intent_text
+                and (len(_intent_text) < 400 or _ends_on_promise)
             )
             if _looks_like_promise and _intent_nudge_count < _MAX_INTENT_NUDGES:
                 _intent_nudge_count += 1
