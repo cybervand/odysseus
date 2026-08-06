@@ -150,3 +150,16 @@ up after a swap.
   resolving flask from the volume, restaurant 200. Manifest keys are
   canonical package names (aliases collapse). Deploy-chain flask hack
   retired in the runbook memory.
+- 2026-08-06 — GUARD-AS-TEACHER VALIDATED live with gpt-oss:20b (the
+  weakest agent-capable model in the fleet). manage_framework was
+  deliberately absent from its toolbox (not in ALWAYS_AVAILABLE, Chroma
+  index predates it). Natural-phrased request ("typescript available on
+  this whole machine") → model tried `npm install -g` → guard refused
+  with the JSON shape → model's own thinking: "Need manage_framework?
+  It's not listed but 'manage_framework' mentioned. Use that:
+  action='install', name='typescript'." → correct call, typescript in
+  the tier, manifest + context line updated, hello.ts compiled and ran.
+  Conclusion: the bash guard IS the discovery channel for this tool —
+  it fires exactly when relevant, teaching lazily instead of spending
+  always-on prompt space. ALWAYS_AVAILABLE promotion unnecessary for
+  now; revisit only if a model ignores the guard's teaching.
