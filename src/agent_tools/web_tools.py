@@ -160,7 +160,16 @@ class WebFetchTool:
         if len(title) > 300:
             title = title[:300] + "..."
         header = (f"# {title}\n" if title else "") + f"Source: {url}\n\n"
-        output = size_note + header + text
+        # Image URLs the text extraction would otherwise discard — without
+        # this section a model asked to find an image can fetch the right
+        # page and still have NO way to learn any image's address (it
+        # fabricates one instead; qwen, doc 013). Placed before the body so
+        # the output cap can't drop it.
+        images = result.get("images") or []
+        images_note = ""
+        if images:
+            images_note = "[images on page]\n" + "\n".join(images[:12]) + "\n\n"
+        output = size_note + header + images_note + text
         if len(output) > MAX_OUTPUT_CHARS:
             output = output[:MAX_OUTPUT_CHARS] + "\n\n[...truncated]"
         return {"output": output, "exit_code": 0}

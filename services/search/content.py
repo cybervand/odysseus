@@ -382,6 +382,34 @@ def _extract_meta(soup: BeautifulSoup) -> dict:
     return {"description": description, "keywords": keywords}
 
 
+def _extract_images(soup: BeautifulSoup, base_url: str, cap: int = 12) -> List[str]:
+    """Direct image URLs from the page, absolute, deduped, capped.
+
+    The text extraction discards ``img src`` attributes entirely, which made
+    every find-an-image task unwinnable for agents: a model could fetch a
+    Wikimedia Commons file page and receive prose about the photo with no way
+    to learn its address — so it fabricated URLs (qwen, 2026-08-06). Skips
+    data: URIs, SVG page chrome, and obvious UI sprites.
+    """
+    from urllib.parse import urljoin
+    seen: List[str] = []
+    for img in soup.find_all("img"):
+        src = (img.get("src") or img.get("data-src") or "").strip()
+        if not src or src.startswith("data:"):
+            continue
+        absolute = urljoin(base_url, src)
+        if not absolute.startswith(("http://", "https://")):
+            continue
+        low = absolute.lower().split("?", 1)[0]
+        if low.endswith(".svg") or "/static/" in low or "sprite" in low:
+            continue
+        if absolute not in seen:
+            seen.append(absolute)
+        if len(seen) >= cap:
+            break
+    return seen
+
+
 def _extract_og_image(soup: BeautifulSoup) -> str:
     """Extract the best representative image URL from meta tags.
 
@@ -679,6 +707,7 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
         "meta_description": meta_info.get("description", ""),
         "meta_keywords": meta_info.get("keywords", ""),
         "og_image": og_image,
+        "images": _extract_images(soup, url),
         "js_rendered": js_rendered,
         "js_message": js_message,
         "success": True,
