@@ -68,6 +68,17 @@ Four layers, each catching what the one above misses:
    it. v1 is npm + pip ONLY; anything needing root/apt returns a clear
    "ask the human" error (app runs uid 99; also the safety-correct tier).
 
+   **No location parameter, by design.** Location is the decision models
+   get wrong (the doomed-tier lesson), so the tool removes it: the shared
+   tier has exactly one right place and the tool owns it. Project-scoped
+   deps flow through bash, which already runs in the session's cwd via
+   the session context — the model's location arrives automatically, the
+   same way session_id reaches every tool. (Contrast manage_server's
+   explicit `cwd`: WHICH app a server belongs to is genuinely the
+   model's knowledge; WHERE shared tools live is system knowledge.) If a
+   `scope: "project"` action is ever added, it defaults to the session
+   cwd like bash — model says nothing, override optional.
+
 4. **Manifest + context line** (the memory and the discovery):
    `/app/data/toolchain/toolchain.json` — name, manager, version, when,
    session. Written by the tool on every action. Two consumers:
