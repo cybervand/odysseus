@@ -289,6 +289,29 @@ async def _run_subprocess_streaming(
         timed_out,
     )
 
+# `sh: 1: lsof: not found` / `bash: netstat: command not found`
+_NOT_FOUND_RE = re.compile(r"(?:^|\n)(?:/bin/)?(?:ba)?sh: (?:\d+: )?([\w.+-]+): (?:command )?not found", re.MULTILINE)
+
+
+def _maybe_env_hint(err: str) -> str:
+    """One-shot world-model teaching for 'X: not found' stderr (doc 013):
+    without it models walk the trained troubleshooting liturgy (lsof →
+    netstat → ss → fuser, each equally absent) instead of concluding the
+    container is minimal. Returns "" when no hint applies."""
+    m = _NOT_FOUND_RE.search(err) if err else None
+    if not m:
+        return ""
+    return (
+        f"\n[env hint] '{m.group(1)}' does not exist in this minimal "
+        "container — neither do lsof, netstat, ss, fuser, vim, nano or "
+        "jq. Do not try other missing binaries; use what exists: "
+        "python3, curl, ps, grep, sed, awk, find, git, npm/node. "
+        "To check a port: python3 -c \"import socket; "
+        "print(socket.socket().connect_ex(('127.0.0.1', PORT)))\" "
+        "(0 = something is listening)."
+    )
+
+
 class BashTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import agent_cwd, _truncate
@@ -343,6 +366,7 @@ class BashTool:
         if err:
             output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
         output = _truncate(output, MAX_OUTPUT_CHARS)
+        output += _maybe_env_hint(err)
         return {"output": output or "(no output)", "exit_code": rc or 0}
 
 class PythonTool:
