@@ -87,13 +87,32 @@ def render_timeline(events):
     """The doc-014 timeline contract as a pure function over log events.
 
     Events are dicts with ts (epoch seconds), kind, payload. Contiguous
-    thinking events collapse to one `thought:` span; a reply span lists
-    the tools that ran since the previous rendered line.
+    thinking events collapse to one `thought:` span; tools attach to the
+    phase they ran in, each with a status:
+      ok    — executed, succeeded
+      error — executed, but the WORK failed (bash exit!=0, traceback)
+      fail  — the tool itself couldn't do its job (bad args, no results)
+    A tool called several times shows its WORST status (fail > error > ok).
     """
     import time as _t
 
+    _RANK = {"ok": 0, "error": 1, "fail": 2}
+
     def _hms(ts):
         return _t.strftime("%H:%M:%S", _t.gmtime(ts))
+
+    def _fmt_tools(tools):
+        # tools: list of (name, status) preserving first-call order
+        return "[tools: " + ", ".join(f"{n} {s}" for n, s in tools) + "] "
+
+    def _record(tools, name, status):
+        for idx, (n, s) in enumerate(tools):
+            if n == name:
+                if _RANK.get(status, 0) > _RANK.get(s, 0):
+                    tools[idx] = (n, status)
+                return
+        # tool_end for a name we somehow missed the start of
+        tools.append((name, status))
 
     lines = []
     i = 0
@@ -127,13 +146,13 @@ def render_timeline(events):
                 elif e["kind"] == "tool_start":
                     if not _more_thinking_ahead(i):
                         break            # action phase begins here
-                    if e["payload"] not in think_tools:
-                        think_tools.append(e["payload"])
+                    if not any(n == e["payload"] for n, _ in think_tools):
+                        think_tools.append((e["payload"], "ok"))
                         end = e["ts"]
-                elif e["kind"] == "tool_end" and e.get("status") == "fail":
-                    think_tools = [t + "✗" if t == e["payload"] else t for t in think_tools]
+                elif e["kind"] == "tool_end":
+                    _record(think_tools, e["payload"], e.get("status", "ok"))
                 i += 1
-            tools = f"[tools: {', '.join(think_tools)}] " if think_tools else ""
+            tools = _fmt_tools(think_tools) if think_tools else ""
             lines.append(f"{_hms(start)}-{_hms(end)} Agent: {tools}thought: {''.join(text)}")
         elif ev["kind"] == "tool_start":
             # The action phase (tools + reply) is ONE span in the timeline —
@@ -141,22 +160,26 @@ def render_timeline(events):
             # agent starts ACTING, not when the first token appears.
             if not pending_tools:
                 pending_action_start = ev["ts"]
-            if ev["payload"] not in pending_tools:
-                pending_tools.append(ev["payload"])
+            if not any(n == ev["payload"] for n, _ in pending_tools):
+                pending_tools.append((ev["payload"], "ok"))
             i += 1
         elif ev["kind"] == "tool_end":
+            _record(pending_tools, ev["payload"], ev.get("status", "ok"))
             i += 1
         elif ev["kind"] == "reply":
             start = pending_action_start if pending_tools else ev["ts"]
             text = []
             while i < len(events) and events[i]["kind"] in ("reply", "tool_start", "tool_end"):
-                if events[i]["kind"] == "reply":
-                    text.append(events[i]["payload"])
-                    end = events[i]["ts"]
-                elif events[i]["kind"] == "tool_start" and events[i]["payload"] not in pending_tools:
-                    pending_tools.append(events[i]["payload"])
+                e = events[i]
+                if e["kind"] == "reply":
+                    text.append(e["payload"])
+                    end = e["ts"]
+                elif e["kind"] == "tool_start" and not any(n == e["payload"] for n, _ in pending_tools):
+                    pending_tools.append((e["payload"], "ok"))
+                elif e["kind"] == "tool_end":
+                    _record(pending_tools, e["payload"], e.get("status", "ok"))
                 i += 1
-            tools = f"[tools: {', '.join(pending_tools)}] " if pending_tools else ""
+            tools = _fmt_tools(pending_tools) if pending_tools else ""
             lines.append(f"{_hms(start)}-{_hms(end)} Agent: {tools}replied: {''.join(text)}")
             pending_tools = []
         else:
@@ -230,7 +253,10 @@ def test_timeline_renders_the_users_exact_example():
     assert lines[0] == "19:00:01 User: hi build X for me"
     assert lines[1] == ("19:00:01-19:00:30 Agent: thought: the user is asking me to "
                         "build X for me, i should build X for him in X way.")
-    assert lines[2].startswith("19:00:30-19:01:05 Agent: [tools: bash, python, find_images] replied: Hi! Absolutely")
+    assert lines[2].startswith(
+        "19:00:30-19:01:05 Agent: [tools: bash ok, python ok, find_images ok] "
+        "replied: Hi! Absolutely"
+    )
     assert "[code written: X]" in lines[2]
 
 
@@ -243,18 +269,37 @@ def test_tools_called_mid_thought_attach_to_the_thinking_span():
         {"ts": T + 4, "kind": "tool_end", "payload": "read_file", "status": "ok"},
         {"ts": T + 5, "kind": "thinking", "payload": "ah, the selector is wrong."},
         {"ts": T + 6, "kind": "tool_start", "payload": "bash"},
-        {"ts": T + 8, "kind": "tool_end", "payload": "bash", "status": "fail"},
+        {"ts": T + 8, "kind": "tool_end", "payload": "bash", "status": "error"},
         {"ts": T + 9, "kind": "thinking", "payload": " bash failed, trying an edit."},
         {"ts": T + 10, "kind": "reply", "payload": "Fixed the selector."},
     ]
     lines = render_timeline(events)
     # One thinking span despite embedded tool calls; tools attributed to it.
     assert len(lines) == 3
-    assert "[tools: read_file, bash✗] thought:" in lines[1]
+    assert "[tools: read_file ok, bash error] thought:" in lines[1]
     assert "bash failed, trying an edit" in lines[1]
     # The reply span carries no tools — they all ran during thinking.
     assert "[tools:" not in lines[2]
     assert lines[2].endswith("replied: Fixed the selector.")
+
+
+def test_tool_status_vocabulary_and_worst_status_aggregation():
+    """ok = ran & succeeded; error = ran but the WORK failed (exit!=0);
+    fail = the tool itself couldn't do its job. A tool called repeatedly
+    shows its worst status (fail > error > ok)."""
+    T = 1750000000
+    events = [
+        {"ts": T, "kind": "user_msg", "payload": "build it"},
+        {"ts": T + 1, "kind": "tool_start", "payload": "bash"},
+        {"ts": T + 2, "kind": "tool_end", "payload": "bash", "status": "ok"},
+        {"ts": T + 3, "kind": "tool_start", "payload": "bash"},
+        {"ts": T + 4, "kind": "tool_end", "payload": "bash", "status": "error"},
+        {"ts": T + 5, "kind": "tool_start", "payload": "find_images"},
+        {"ts": T + 6, "kind": "tool_end", "payload": "find_images", "status": "fail"},
+        {"ts": T + 7, "kind": "reply", "payload": "done-ish"},
+    ]
+    lines = render_timeline(events)
+    assert "[tools: bash error, find_images fail]" in lines[1]
 
 
 def test_timeline_without_tools_or_thinking():

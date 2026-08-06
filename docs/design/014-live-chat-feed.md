@@ -111,9 +111,25 @@ and a kind. Canonical event kinds:
 |---|---|---|
 | user_msg | text | `HH:MM:SS User: ...` |
 | thinking | delta text | contiguous run → one `thought:` span (first..last ts) |
-| tool_start / tool_end | tool, args head / result head | collected per reply → `[tools: a, b]`; per-tool spans available |
+| tool_start / tool_end | tool, args head / result head + status | attached to the phase they RAN IN → `[tools: bash ok, python ok, find_images fail]`; per-tool spans available |
 | reply | delta text | contiguous run → one `replied:` span |
 | run_state | started/done/interrupted | phase boundaries, badges |
+
+**Tool status vocabulary** (user, 2026-08-06 — three states, earned from
+a week of autopsies):
+
+- `ok` — the tool executed and succeeded.
+- `error` — the tool executed correctly but the WORK failed: bash exit
+  != 0, a traceback, `lsof: not found`. The tool is innocent; the
+  command isn't. (Derived: result has exit_code != 0.)
+- `fail` — the tool ITSELF couldn't do its job: rejected arguments, tool
+  exception, no results found. (Derived: result carries an error field /
+  never executed.)
+
+A tool called several times in a phase shows its WORST status
+(fail > error > ok). Tools called MID-THOUGHT attach to the thinking
+span, not the reply (a tool belongs to thinking only if more thinking
+follows it before the reply — the lookahead rule).
 
 The CURRENT pipeline cannot produce this view: thinking deltas are
 unstamped, tool timing exists only in container logs, and durations die
