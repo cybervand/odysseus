@@ -525,6 +525,14 @@ def _split_bg_marker(content: str):
     if i < len(lines) and lines[i].strip().lower() in _BG_MARKERS:
         del lines[i]
         return True, "\n".join(lines).strip()
+    # Tolerance for the observed misuse `cd X && #!bg` (qwen, 2026-08-06):
+    # mid-line the marker is a shell comment, so the server ran FOREGROUND
+    # and held the run hostage. Honor the intent instead of the accident.
+    if i < len(lines):
+        m = re.match(r"^(.*?)\s*&&\s*#!bg\s*$", lines[i].strip())
+        if m:
+            lines[i] = m.group(1)
+            return True, "\n".join(lines).strip()
     return False, content
 
 

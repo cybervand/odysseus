@@ -283,6 +283,111 @@ def kill(job_id: str) -> Optional[Dict[str, Any]]:
     return rec
 
 
+# ── Named servers (doc 014 follow-on, the stale-process lesson) ──
+# A server is a long-lived named job: no 1h reaping, restartable by name.
+# "Edit the code" and "change the behavior" are different things until the
+# process restarts — `restart` is the verb that reconciles them.
+
+_SERVERS_FILE = _JOBS_DIR / "servers.json"
+SERVER_MAX_RUNTIME_S = 7 * 24 * 3600
+
+
+def _load_servers() -> Dict[str, Dict[str, Any]]:
+    try:
+        if _SERVERS_FILE.exists():
+            data = json.loads(_SERVERS_FILE.read_text(encoding="utf-8")) or {}
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_servers(servers: Dict[str, Dict[str, Any]]) -> None:
+    _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(str(_SERVERS_FILE), servers, indent=2)
+
+
+def server_start(name: str, command: str, session_id: str,
+                 cwd: Optional[str] = None, port: Optional[int] = None) -> Dict[str, Any]:
+    """Start (or replace) the named server, detached and unreaped."""
+    servers = _load_servers()
+    old = servers.get(name)
+    if old and old.get("job_id"):
+        kill(old["job_id"])   # replacing an existing instance is deliberate
+    rec = launch(command, session_id, cwd=cwd, max_runtime_s=SERVER_MAX_RUNTIME_S)
+    servers[name] = {"job_id": rec["id"], "command": command, "cwd": cwd,
+                     "port": port, "session_id": session_id,
+                     "started_at": rec["started_at"]}
+    _save_servers(servers)
+    return server_status(name)
+
+
+def server_stop(name: str) -> Optional[Dict[str, Any]]:
+    servers = _load_servers()
+    entry = servers.get(name)
+    if not entry:
+        return None
+    kill(entry.get("job_id", ""))
+    entry["stopped"] = True
+    _save_servers(servers)
+    return server_status(name)
+
+
+def server_restart(name: str) -> Optional[Dict[str, Any]]:
+    """Stop + start with the SAME command/cwd/port — applies code edits."""
+    entry = _load_servers().get(name)
+    if not entry:
+        return None
+    return server_start(name, entry["command"], entry.get("session_id", ""),
+                        cwd=entry.get("cwd"), port=entry.get("port"))
+
+
+def _port_listening(port: Optional[int]) -> Optional[bool]:
+    if not port:
+        return None
+    import socket
+    try:
+        s = socket.socket()
+        s.settimeout(2)
+        ok = s.connect_ex(("127.0.0.1", int(port))) == 0
+        s.close()
+        return ok
+    except Exception:
+        return None
+
+
+def server_status(name: str) -> Optional[Dict[str, Any]]:
+    entry = _load_servers().get(name)
+    if not entry:
+        return None
+    job = get(entry.get("job_id", "")) or {}
+    return {
+        "name": name,
+        "command": entry.get("command"),
+        "cwd": entry.get("cwd"),
+        "port": entry.get("port"),
+        "running": job.get("status") == "running",
+        "port_listening": _port_listening(entry.get("port")),
+        "uptime_s": round(time.time() - entry.get("started_at", time.time()), 1)
+        if job.get("status") == "running" else None,
+        "job_id": entry.get("job_id"),
+        "exit_code": job.get("exit_code"),
+    }
+
+
+def server_list() -> List[Dict[str, Any]]:
+    return [server_status(n) for n in _load_servers().keys()]
+
+
+def server_logs(name: str, tail_chars: int = 4000) -> Optional[str]:
+    entry = _load_servers().get(name)
+    if not entry:
+        return None
+    job = get(entry.get("job_id", "")) or {}
+    out = job.get("output") or ""
+    return out[-tail_chars:] if out else "(no output yet)"
+
+
 def result_text(rec: Dict[str, Any]) -> str:
     """Human/agent-readable summary of a finished job, for the follow-up."""
     out = _read_output(rec)

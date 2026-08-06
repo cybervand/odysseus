@@ -570,6 +570,12 @@ Use this instead of `bash`, `curl`, `python`, `requests`, or scraping code for w
 ```
 Fetch and read the text content of a SPECIFIC URL the user names (e.g. "check example.com", "what does this page say <url>"). A bare domain like `example.com` works (defaults to https). Use this when you already have a concrete URL. For open-ended lookups use `web_search`, and for "research X" jobs use `trigger_research`.""",
 
+    "manage_server": """\
+```manage_server
+{"action": "start", "name": "myapp", "command": "python app.py", "cwd": "/app/data/myapp", "port": 8090}
+```
+Run and manage long-lived servers. NEVER start a server in bash — it never exits and blocks everything. Actions: start, stop, restart, status, logs, list. CRITICAL: after editing server code you MUST `{"action": "restart", "name": "myapp"}` — a running process does NOT see file edits; restarting is how your fix goes live.""",
+
     "find_images": """\
 ```find_images
 {"query": "<what the image should show>", "count": 1}

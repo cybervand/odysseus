@@ -289,6 +289,44 @@ async def _run_subprocess_streaming(
         timed_out,
     )
 
+# Commands that never return: running them in foreground bash holds the
+# tool call (and the whole run) hostage until timeout — it happened three
+# times in one day (npm run dev, vite preview, python app.py/flask).
+# Foreground bash REFUSES them with directions to manage_server; a first
+# line of `#!fg` overrides for genuinely finite scripts.
+_SERVER_CMD_RE = re.compile(
+    r"\b(npm run dev|npm start|yarn dev|pnpm dev|vite preview|vite dev|"
+    r"flask run|python[0-9.]* -m http\.server|uvicorn |gunicorn |"
+    r"ng serve|next dev|python[0-9.]* app\.py|node (?:server|app|index)\.js)\b"
+)
+
+
+def _server_command_guard(content: str):
+    """Return an error dict when the command is a known never-returning
+    server launch (and not #!fg-overridden); else None."""
+    lines = content.split("\n")
+    first = next((ln.strip() for ln in lines if ln.strip()), "")
+    if first.lower() in ("#!fg", "# fg"):
+        return None
+    m = _SERVER_CMD_RE.search(content)
+    if not m:
+        return None
+    return {
+        "error": (
+            f"bash: refusing to run '{m.group(1)}' in the foreground — it never "
+            "exits, so it would hold this tool call hostage until timeout. "
+            "Use your manage_server tool instead: "
+            '{"action": "start", "name": "myapp", "command": "<the command>", '
+            '"cwd": "<project dir>", "port": <port>} — then manage_server '
+            '{"action": "restart", "name": "myapp"} after EVERY code edit '
+            "(edits do not apply to a running process), and "
+            '{"action": "logs", "name": "myapp"} to read its output. '
+            "If this really is a finite script, resend with #!fg as the first line."
+        ),
+        "exit_code": 1,
+    }
+
+
 # `sh: 1: lsof: not found` / `bash: netstat: command not found`
 _NOT_FOUND_RE = re.compile(r"(?:^|\n)(?:/bin/)?(?:ba)?sh: (?:\d+: )?([\w.+-]+): (?:command )?not found", re.MULTILINE)
 
@@ -317,6 +355,9 @@ class BashTool:
         from src.tool_execution import agent_cwd, _truncate
         if isinstance(content, dict):
             content = str(content.get("command") or content.get("cmd") or content.get("code") or "")
+        _guard = _server_command_guard(content or "")
+        if _guard:
+            return _guard
         progress_cb = ctx.get("progress_cb")
         _subproc_env = ctx.get("subproc_env")
         session_id = ctx.get("session_id")

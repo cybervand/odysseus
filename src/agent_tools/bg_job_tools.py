@@ -49,6 +49,80 @@ def _row(rec: Dict[str, Any]) -> str:
     return f"[{rec.get('id')}] {_status_label(rec)} | {_age(rec)} | {cmd}"
 
 
+class ManageServerTool:
+    """Server lifecycle as a first-class tool (the stale-process lesson,
+    2026-08-06): a model FIXED a bug on disk while the old process kept
+    serving it — because 'edit the code' and 'change the behavior' are
+    different things until a restart, and restarting had no sanctioned
+    verb. Now it does: start / stop / restart / status / logs / list,
+    named, detached, unreaped, port-aware."""
+
+    async def execute(self, content: str, ctx: dict) -> dict:
+        from src import bg_jobs
+        session_id = ctx.get("session_id") or ""
+        raw = (content or "").strip()
+        try:
+            args = json.loads(raw) if raw else {}
+        except (ValueError, TypeError):
+            args = {}
+        if not isinstance(args, dict):
+            args = {}
+        action = str(args.get("action", "list")).strip().lower()
+        name = str(args.get("name") or "").strip()
+
+        def _fmt(st):
+            if st is None:
+                return "(unknown server)"
+            run = "RUNNING" if st.get("running") else f"stopped (exit {st.get('exit_code')})"
+            port = f", port {st['port']} {'listening' if st.get('port_listening') else 'NOT listening'}" if st.get("port") else ""
+            up = f", up {int(st['uptime_s'])}s" if st.get("uptime_s") else ""
+            return f"server '{st['name']}': {run}{port}{up}\n  command: {st.get('command')}"
+
+        if action == "list":
+            servers = bg_jobs.server_list()
+            if not servers:
+                return {"output": "No named servers. Start one: {\"action\": \"start\", \"name\": \"myapp\", \"command\": \"python app.py\", \"cwd\": \"/app/data/myapp\", \"port\": 8090}", "exit_code": 0}
+            return {"output": "\n".join(_fmt(s) for s in servers), "exit_code": 0}
+
+        if not name:
+            return {"error": "manage_server: 'name' is required for this action", "exit_code": 1}
+
+        if action == "start":
+            command = str(args.get("command") or "").strip()
+            if not command:
+                return {"error": "manage_server: 'command' is required for start", "exit_code": 1}
+            cwd = str(args.get("cwd") or "").strip() or None
+            port = args.get("port") if isinstance(args.get("port"), int) else None
+            st = bg_jobs.server_start(name, command, session_id, cwd=cwd, port=port)
+            return {"output": "Started.\n" + _fmt(st), "exit_code": 0}
+
+        if action == "restart":
+            st = bg_jobs.server_restart(name)
+            if st is None:
+                return {"error": f"manage_server: unknown server '{name}' (see action='list')", "exit_code": 1}
+            return {"output": "Restarted — code edits are now live.\n" + _fmt(st), "exit_code": 0}
+
+        if action == "stop":
+            st = bg_jobs.server_stop(name)
+            if st is None:
+                return {"error": f"manage_server: unknown server '{name}'", "exit_code": 1}
+            return {"output": "Stopped.\n" + _fmt(st), "exit_code": 0}
+
+        if action == "status":
+            st = bg_jobs.server_status(name)
+            if st is None:
+                return {"error": f"manage_server: unknown server '{name}'", "exit_code": 1}
+            return {"output": _fmt(st), "exit_code": 0}
+
+        if action == "logs":
+            logs = bg_jobs.server_logs(name)
+            if logs is None:
+                return {"error": f"manage_server: unknown server '{name}'", "exit_code": 1}
+            return {"output": f"logs for '{name}':\n{logs}", "exit_code": 0}
+
+        return {"error": f"manage_server: unknown action '{action}' (start|stop|restart|status|logs|list)", "exit_code": 1}
+
+
 class ManageBgJobsTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src import bg_jobs

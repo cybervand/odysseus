@@ -94,6 +94,24 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "manage_server",
+            "description": "Run and manage long-lived servers (web apps, APIs, dev servers). NEVER start a server with bash — it never exits and blocks everything. Actions: start (name+command+cwd+port), stop, restart, status, logs, list. CRITICAL: after editing server code you MUST restart — a running process does not see file edits.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["start", "stop", "restart", "status", "logs", "list"]},
+                    "name": {"type": "string", "description": "Server name, e.g. 'skilodge'"},
+                    "command": {"type": "string", "description": "start only: the launch command, e.g. 'python app.py'"},
+                    "cwd": {"type": "string", "description": "start only: working directory, e.g. '/app/data/skilodge'"},
+                    "port": {"type": "integer", "description": "start only: the port it listens on (enables the listening check)"}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "find_images",
             "description": "Find VERIFIED open-license image URLs for a subject (Wikimedia Commons). The result lines are already checked live (HTTP 200) — use them directly in HTML/markdown. Always use this to get real images; never invent image URLs and never scrape image pages by hand.",
             "parameters": {
@@ -1461,7 +1479,7 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
             content = json.dumps(args)
         else:
             content = args.get("path", "")
-    elif tool_type in ("grep", "glob", "ls", "find_images"):
+    elif tool_type in ("grep", "glob", "ls", "find_images", "manage_server"):
         content = json.dumps(args) if args else "{}"
     elif tool_type == "get_workspace":
         content = ""
