@@ -4871,6 +4871,17 @@ async def stream_agent_loop(
         # on reload (#3222 follow-up).
         cleaned_round = strip_tool_blocks(round_response, skip_fenced=(_is_api_model and not used_native and not guide_only and not used_fenced_fallback)).strip()
         round_texts.append(cleaned_round)
+        # Checkpoint the accumulated reply every round (doc 013): a killed
+        # run (deploy, crash) must leave what the user watched behind
+        # instead of taking it to the grave. Promoted to a real history
+        # row by the next history load if the run dies; cleared by the
+        # legitimate assistant persist (session_manager.add_message hook).
+        if session_id:
+            try:
+                from src.run_checkpoint import write_partial
+                write_partial(session_id, "\n\n".join(t for t in round_texts if t), round_num)
+            except Exception:
+                pass
         if _ody_qwen_finetune_model and not tool_blocks and cleaned_round:
             yield f'data: {json.dumps({"delta": cleaned_round})}\n\n'
 

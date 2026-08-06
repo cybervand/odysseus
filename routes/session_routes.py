@@ -808,6 +808,15 @@ def setup_session_routes(
             session = session_manager.get_session(sid)
         except KeyError:
             raise HTTPException(404, f"Session {sid} not found")
+        # Doc 013 round checkpoints: an in-flight reply whose run died before
+        # the end-of-run persist would otherwise vanish on refresh — promote
+        # the surviving checkpoint into real history before rendering.
+        try:
+            from src import agent_runs
+            from src.run_checkpoint import promote_if_orphaned
+            promote_if_orphaned(sid, session_manager, agent_runs.get_status(sid))
+        except Exception:
+            pass
         return {"history": [msg.to_dict() for msg in session.history]}
     
     @router.get("/session/{sid}/export")

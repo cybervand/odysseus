@@ -219,6 +219,15 @@ class SessionManager:
         session.message_count = len(session.history)
 
         self._persist_message(session_id, message)
+        # A persisted assistant message supersedes any in-flight checkpoint
+        # (doc 013 round checkpoints) — clear it so it can't be promoted
+        # later as a stale duplicate.
+        if getattr(message, "role", "") == "assistant":
+            try:
+                from src.run_checkpoint import clear_partial
+                clear_partial(session_id)
+            except Exception:
+                pass
 
     def _persist_message(self, session_id: str, message: ChatMessage):
         """Persist a single message to the database."""
