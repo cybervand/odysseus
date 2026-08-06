@@ -137,6 +137,36 @@ with the stream. In log-world the timeline is a pure function
 `render_timeline(events)` — proven in the spike, which reproduces the
 example above from raw events, to the second.
 
+## Incognito: the ephemeral feed (user, 2026-08-06)
+
+"Everything run in memory, nothing saved." What EXISTS today is the
+skeleton: user messages go to a request-local transcript (never DB),
+assistant persistence is gated on `not incognito`, memory/skills
+extraction is suppressed, identity tools (memory, chat search, sessions)
+are stripped. What the audit found MISSING:
+
+- **Round checkpoints leaked** (fixed 2026-08-06): the doc-013 durability
+  checkpoints wrote incognito replies to disk, and promotion would have
+  made them PERMANENT. Durability and privacy collide — incognito
+  explicitly chooses privacy: an incognito run that dies takes its reply
+  with it, by design.
+- **Shared caches leak across the boundary** (open, build round): web
+  fetch content cache and search cache write fetched page content to
+  disk regardless of mode. Incognito requests must bypass both.
+- **Explicit non-goals** (documented so nobody oversells the mode):
+  container/server logs still carry tool commands and policy lines;
+  tool SIDE EFFECTS are real (a file written by bash in incognito is a
+  real file — incognito is not a sandbox); the model provider (Ollama)
+  sees the conversation regardless.
+
+In event-log world (option D) incognito stops being a scatter of guards
+and becomes ONE decision at session start: the session's log is an
+`EphemeralEventLog` — identical interface, RAM-only ring, evicted when
+the session ends. Every consumer (live, resume, timeline) works
+unchanged because they only speak the log interface; nothing downstream
+can accidentally persist what the log never wrote. Proven in the spike:
+interface parity + zero disk footprint.
+
 ## Migration sketch (future, NOT this round)
 
 1. Introduce `feed_events` table + writer, DUAL-writing alongside the

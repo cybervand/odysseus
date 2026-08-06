@@ -187,6 +187,35 @@ def render_timeline(events):
     return lines
 
 
+class EphemeralEventLog:
+    """Incognito's feed (doc 014): identical interface, RAM-only, nothing
+    downstream can persist what this never writes. One decision at session
+    start replaces a scatter of persistence guards."""
+
+    def __init__(self):
+        self._events = {}   # session_id -> list of (seq, kind, payload)
+
+    def append(self, session_id: str, kind: str, payload: str) -> int:
+        evs = self._events.setdefault(session_id, [])
+        seq = len(evs)
+        evs.append((seq, kind, payload))
+        return seq
+
+    def head(self, session_id: str) -> int:
+        return len(self._events.get(session_id, [])) - 1
+
+    def tail(self, session_id: str, from_seq: int = 0):
+        return [{"seq": s, "kind": k, "payload": p}
+                for s, k, p in self._events.get(session_id, []) if s >= from_seq]
+
+    def is_replaying(self, session_id: str, position: int) -> bool:
+        return position < self.head(session_id)
+
+    def end_session(self, session_id: str) -> None:
+        """Eviction IS the privacy guarantee."""
+        self._events.pop(session_id, None)
+
+
 @pytest.fixture()
 def log(tmp_path):
     return EventLog(tmp_path / "feed.db")
@@ -313,6 +342,48 @@ def test_timeline_without_tools_or_thinking():
     assert "thought:" not in lines[1]
     assert "[tools:" not in lines[1]
     assert lines[1].endswith("replied: hey there")
+
+
+def test_ephemeral_log_interface_parity(tmp_path):
+    """Every consumer (live, resume, timeline) speaks only the log
+    interface — so incognito is a constructor swap, not a mode scattered
+    across guards. Same operations, same results, no disk."""
+    import os
+    durable = EventLog(tmp_path / "feed.db")
+    ephemeral = EphemeralEventLog()
+    for lg in (durable, ephemeral):
+        lg.append("s1", "user_msg", "secret question")
+        lg.append("s1", "reply", "secret answer")
+    assert durable.tail("s1", 0) == ephemeral.tail("s1", 0)
+    assert durable.head("s1") == ephemeral.head("s1")
+    assert ephemeral.is_replaying("s1", 0) == durable.is_replaying("s1", 0)
+    # The timeline renderer works identically on ephemeral events.
+    events = [{"ts": 1750000000 + e["seq"], "kind": e["kind"], "payload": e["payload"]}
+              for e in ephemeral.tail("s1", 0)]
+    lines = render_timeline(events)
+    assert lines[0].endswith("User: secret question")
+    # And the privacy guarantee: only ONE file exists in tmp (the durable
+    # log) — the ephemeral session left zero disk footprint.
+    assert os.listdir(tmp_path) == ["feed.db"]
+
+
+def test_ephemeral_eviction_is_total():
+    lg = EphemeralEventLog()
+    lg.append("s1", "user_msg", "secret")
+    lg.end_session("s1")
+    assert lg.tail("s1", 0) == []
+    assert lg.head("s1") == -1
+
+
+def test_incognito_never_checkpoints():
+    """Pin on production code (the leak fixed 2026-08-06): the round
+    checkpoint write is guarded on NOT incognito — a checkpoint is a disk
+    write, and promotion would make the ephemeral reply permanent."""
+    import pathlib
+    import src.agent_loop as al
+    src = pathlib.Path(al.__file__).read_text(encoding="utf-8")
+    assert "if session_id and not incognito:" in src
+    assert "incognito: bool = False" in src
 
 
 def test_independent_consumers(log):

@@ -3413,6 +3413,7 @@ async def stream_agent_loop(
     forced_tools: Optional[Set[str]] = None,
     uploaded_files: Optional[List[Dict]] = None,
     workload: str = "foreground",
+    incognito: bool = False,
     _is_teacher_run: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Streaming agent loop generator.
@@ -4876,7 +4877,9 @@ async def stream_agent_loop(
         # instead of taking it to the grave. Promoted to a real history
         # row by the next history load if the run dies; cleared by the
         # legitimate assistant persist (session_manager.add_message hook).
-        if session_id:
+        # NEVER in incognito (doc 014): a checkpoint is a disk write, and
+        # promotion would make the ephemeral reply permanent.
+        if session_id and not incognito:
             try:
                 from src.run_checkpoint import write_partial
                 write_partial(session_id, "\n\n".join(t for t in round_texts if t), round_num)
