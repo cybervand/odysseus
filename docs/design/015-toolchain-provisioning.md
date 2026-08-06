@@ -1,6 +1,6 @@
 # 015 — Toolchain provisioning: manage_framework and the persistent tier
 
-**Status:** Draft (design agreed 2026-08-06; not built)
+**Status:** Shipped (901370da, deployed toolchain1/v63 2026-08-06) — layers 2-4; layer 1 blessed-set Dockerfile pass rides the Node 22 bump
 
 ## Problem
 
@@ -144,3 +144,9 @@ up after a swap.
 - 2026-08-06 — designed (this doc), after the flask-reinstall hack and
   the manage_server/stale-process arc made the pattern obvious; named
   manage_framework over install_framework to cover the full lifecycle.
+- 2026-08-06 — shipped 901370da, deployed toolchain1/v63. Acceptance
+  held: deploy chain carried NO flask step; flask entered the tier via
+  toolchain.install() as uid 99, skilodge relaunched through the registry
+  resolving flask from the volume, restaurant 200. Manifest keys are
+  canonical package names (aliases collapse). Deploy-chain flask hack
+  retired in the runbook memory.
