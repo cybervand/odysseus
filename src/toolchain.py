@@ -217,7 +217,10 @@ def _verify(spec: Dict[str, Any]) -> Dict[str, Any]:
         if not path:
             return {"ok": False, "detail": f"'{b}' not on PATH after install"}
         v = _run([b, "--version"])
-        ver = (v["out"] or "").strip().splitlines()[0] if v["out"] else ""
+        lines = [ln.strip() for ln in (v["out"] or "").strip().splitlines() if ln.strip()]
+        # Multi-line version output (flask prints Python's version first):
+        # prefer the line naming the tool itself.
+        ver = next((ln for ln in lines if b.lower() in ln.lower()), lines[0] if lines else "")
         return {"ok": v["rc"] == 0, "detail": ver or path}
     if spec["manager"] == "pip":
         r = _run(["pip", "show", spec["package"]])
