@@ -3587,6 +3587,21 @@ async def stream_agent_loop(
                 "content": _tc,
             })
 
+    # Doc 016: the project ledger — the model's evidence-backed memory of
+    # its own prior work. Without it, next-turn context carries only what
+    # the model SAID ("Done.", 5 chars, 13 rounds of invisible work) and it
+    # honestly denies knowing its own URLs/files (session 9bdad2b1).
+    if session_id and not guide_only:
+        try:
+            from src.project_ledger import ledger_context_message
+            _ledger_msg = ledger_context_message(session_id, incognito=incognito)
+        except Exception as _le:
+            logger.debug(f"[agent] ledger load failed: {_le}")
+            _ledger_msg = None
+        if _ledger_msg:
+            messages = _insert_before_latest_user(messages, _ledger_msg)
+            logger.info("[agent] project ledger injected")
+
     # Doc 008 policy delta: break stale "I have no shell" self-narrative.
     _capability_correction_fired = False
     if not guide_only and _needs_capability_correction(messages, disabled_tools):
@@ -6009,6 +6024,25 @@ async def stream_agent_loop(
         # "what was on when this turn ran" is answerable from the chat log.
         metrics["tool_policy"] = _policy_snapshot
     yield f"data: {json.dumps({'type': 'metrics', 'data': metrics})}\n\n"
+
+    # Doc 016: update the project ledger from this run's evidence. After the
+    # metrics (the user's reply is complete; this must not delay it) and only
+    # for effectful runs — pure Q&A leaves no ledger-worthy evidence. The
+    # updater LLM proposes, _enforce disposes (anchor-gated ticks), so a weak
+    # model's worst case is items staying open, never falsely checked.
+    if (session_id and not guide_only
+            and any(ev.get("tool") in _VERIFIER_EFFECTFUL_TOOLS for ev in tool_events)
+            and get_setting("agent_project_ledger", True)):
+        try:
+            from src.project_ledger import update_ledger
+            await update_ledger(
+                session_id, _verifier_instruction or "",
+                tool_events, _build_actions_snapshot(tool_events),
+                endpoint_url=endpoint_url, model=model, headers=headers,
+                incognito=incognito, effectful_tools=_VERIFIER_EFFECTFUL_TOOLS,
+            )
+        except Exception as _lu_err:
+            logger.warning(f"[agent] ledger update failed: {_lu_err}")
 
     # Teacher-escalation: inline takeover visible in the chat stream.
     # The student just finished; if Tier 1 flags failure, the teacher

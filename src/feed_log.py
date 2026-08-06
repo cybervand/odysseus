@@ -91,6 +91,20 @@ class EventLog:
     def is_replaying(self, session_id: str, position: int) -> bool:
         return position < self.head(session_id)
 
+    def latest(self, session_id: str, kind: str) -> Optional[str]:
+        """Payload of the newest event of `kind`, or None (doc 016: the
+        ledger is stored latest-wins as its own event kind)."""
+        con = self._con()
+        try:
+            row = con.execute(
+                "SELECT payload FROM feed_events WHERE session_id = ? AND kind = ?"
+                " ORDER BY seq DESC LIMIT 1",
+                (session_id, kind),
+            ).fetchone()
+            return row[0] if row else None
+        finally:
+            con.close()
+
 
 class EphemeralEventLog:
     """Incognito's feed: identical interface, RAM ring, evicted on end."""
@@ -115,6 +129,12 @@ class EphemeralEventLog:
 
     def is_replaying(self, session_id: str, position: int) -> bool:
         return position < self.head(session_id)
+
+    def latest(self, session_id: str, kind: str) -> Optional[str]:
+        for e in reversed(self._events.get(session_id, [])):
+            if e["kind"] == kind:
+                return e["payload"]
+        return None
 
     def end_session(self, session_id: str) -> None:
         with self._lock:
