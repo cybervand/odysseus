@@ -629,15 +629,26 @@ async def execute_tool_block(
     except Exception:
         try:
             from src import feed_log
-            feed_log.emit(session_id, "tool_end", json.dumps({"tool": _tool, "status": "fail"}))
+            feed_log.emit(session_id, "tool_end", json.dumps(
+                {"tool": _tool, "status": "fail", "command": _head}))
         except Exception:
             pass
         raise
     else:
         try:
             from src import feed_log
-            _status = feed_log.tool_status(output[1] if isinstance(output, tuple) and len(output) > 1 else {})
-            feed_log.emit(session_id, "tool_end", json.dumps({"tool": _tool, "status": _status}))
+            _res = output[1] if isinstance(output, tuple) and len(output) > 1 and isinstance(output[1], dict) else {}
+            _status = feed_log.tool_status(_res)
+            # Phase 3 (doc 014): the log is becoming the history source, so
+            # tool_end must carry what a tool card renders — command head,
+            # exit code, output head. Bounded so the log stays lean.
+            _payload = {"tool": _tool, "status": _status, "command": _head}
+            if _res.get("exit_code") is not None:
+                _payload["exit_code"] = _res.get("exit_code")
+            _out_txt = str(_res.get("output") or _res.get("error") or "")[:2000]
+            if _out_txt:
+                _payload["output"] = _out_txt
+            feed_log.emit(session_id, "tool_end", json.dumps(_payload))
         except Exception:
             pass
         return output

@@ -274,6 +274,94 @@ def render_timeline(events):
     return lines
 
 
+# ── History assembly (doc 014 phase 3a) ──
+# The log becomes the history source: events -> the exact metadata shape
+# the chat renderer already speaks (round_texts + tool_events), so the
+# client needs zero changes and legacy saved metadata demotes to the
+# pre-log fallback.
+
+
+def assemble_history(events):
+    """Pure function: log events -> per-run renderer-shape metadata.
+
+    Returns a list of runs, one per user_msg (events before the first
+    user_msg fold into the first run): each is {"round_texts": [...],
+    "tool_events": [...]}. Thinking persists inside round text as a
+    <think> block (the renderer's processWithThinking parses it); tools
+    carry command/output/exit_code when the log has them (post-enrichment
+    events) and 1-based round attribution."""
+    runs = []
+    cur = None
+
+    def _new_run():
+        return {"round_texts": [], "tool_events": [], "_thinking": [], "_reply": [],
+                "_open_tools": {}}
+
+    def _close_round(run):
+        think = "".join(run["_thinking"]).strip()
+        reply = "".join(run["_reply"]).strip()
+        if not think and not reply:
+            return
+        text = reply
+        if think and "<think>" not in reply:
+            text = (f"<think>\n{think}\n</think>\n\n" + reply).strip()
+        run["round_texts"].append(text)
+        run["_thinking"] = []
+        run["_reply"] = []
+
+    for ev in events:
+        kind = ev.get("kind")
+        if kind == "user_msg":
+            if cur is not None:
+                _close_round(cur)
+                runs.append(cur)
+            cur = _new_run()
+            continue
+        if cur is None:
+            cur = _new_run()
+        if kind == "thinking":
+            # thinking after a reply began = a new round starting
+            if cur["_reply"]:
+                _close_round(cur)
+            cur["_thinking"].append(ev.get("payload") or "")
+        elif kind == "reply":
+            cur["_reply"].append(ev.get("payload") or "")
+        elif kind == "tool_start":
+            pass  # membership recorded at tool_end (which has the status)
+        elif kind == "tool_end":
+            p = ev.get("payload") or ""
+            info = {}
+            if isinstance(p, str) and p.startswith("{"):
+                try:
+                    info = json.loads(p)
+                except json.JSONDecodeError:
+                    info = {"tool": p}
+            else:
+                info = {"tool": p}
+            round_num = len(cur["round_texts"]) + 1
+            tev = {"tool": info.get("tool", "?"), "round": round_num,
+                   "status": info.get("status", "ok")}
+            if info.get("command"):
+                tev["command"] = info["command"]
+            if info.get("output"):
+                tev["output"] = info["output"]
+            if info.get("exit_code") is not None:
+                tev["exit_code"] = info["exit_code"]
+            else:
+                tev["exit_code"] = 0 if tev["status"] == "ok" else 1
+            cur["tool_events"].append(tev)
+    if cur is not None:
+        _close_round(cur)
+        runs.append(cur)
+    out = []
+    for r in runs:
+        if r["round_texts"] or r["tool_events"]:
+            out.append({"round_texts": r["round_texts"], "tool_events": r["tool_events"]})
+        else:
+            out.append(None)  # user_msg with no agent activity (e.g. plain chat rows)
+    return out
+
+
 def _tool_name(ev) -> str:
     """tool_end payload is either a bare name or JSON {tool, status}."""
     p = ev.get("payload", "")

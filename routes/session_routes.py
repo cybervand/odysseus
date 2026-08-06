@@ -817,7 +817,43 @@ def setup_session_routes(
             promote_if_orphaned(sid, session_manager, agent_runs.get_status(sid))
         except Exception:
             pass
-        return {"history": [msg.to_dict() for msg in session.history]}
+        history = [msg.to_dict() for msg in session.history]
+        # Doc 014 phase 3a: the event log is the history source. When the
+        # session has log coverage that aligns 1:1 with the user turns,
+        # overlay assistant metadata (round_texts + tool_events) with the
+        # log-assembled version — one source of truth; saved metadata
+        # remains the pre-log fallback. Conservative: any misalignment
+        # leaves history untouched.
+        try:
+            from src.feed_log import get_log, assemble_history
+            events = get_log(incognito=False).tail(sid, 0)
+            if events:
+                runs = assemble_history(events)
+                agent_runs_assembled = [r for r in runs if r]
+                assistant_rows = [m for m in history
+                                  if m.get("role") == "assistant"
+                                  and (m.get("metadata") or {}).get("tool_events")]
+                if agent_runs_assembled and len(agent_runs_assembled) == len(assistant_rows):
+                    for row, asm in zip(assistant_rows, agent_runs_assembled):
+                        md = row.setdefault("metadata", {})
+                        if asm["round_texts"]:
+                            md["round_texts"] = asm["round_texts"]
+                            # Thinking now lives inline in round_texts; drop
+                            # the metadata copy so the renderer's graft
+                            # doesn't render it twice.
+                            md.pop("thinking", None)
+                        # Log tool events carry command/output only after the
+                        # enrichment ship; keep richer legacy events until
+                        # the log's are at least as informative.
+                        _legacy = md.get("tool_events") or []
+                        _log_has_detail = any(t.get("command") or t.get("output")
+                                              for t in asm["tool_events"])
+                        if asm["tool_events"] and (_log_has_detail or not _legacy):
+                            md["tool_events"] = asm["tool_events"]
+                        md["history_source"] = "feed_log"
+        except Exception:
+            logger.exception("history-from-log overlay failed; serving legacy history")
+        return {"history": history}
 
     @router.get("/session/{sid}/feed")
     def get_feed(request: Request, sid: str, from_seq: int = 0):
