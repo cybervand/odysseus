@@ -18,6 +18,15 @@ it was added because some model failed without it ("FILESYSTEM only"
 stop until" = one-file victory laps). The ladder decomposes it back into
 its individual scars and asks which ones each model actually needs.
 
+**Prompt-authoring rule: ASCII only.** Ladder and crew prompts use plain
+ASCII — no typographic arrows, em dashes, curly quotes. Two scars back
+this: the capability-denial regex initially missed models quoting the
+policy line with typographic apostrophes, and a chat-export round-trip
+mojibake-corrupted a deliverable (2026-08-06). Small models tokenize
+exotic punctuation unpredictably, and prompts get copy-pasted through
+channels that mangle non-ASCII. (User-authored R0 typos are sacred;
+this rule governs the characters, not the spelling.)
+
 ## Rungs
 
 - **R0 — lazy human, USER-AUTHORED 2026-08-05 (official, verbatim, typos
