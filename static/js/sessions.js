@@ -1857,6 +1857,17 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     const _isTransientChat = !!_meta && (_meta.folder === 'Assistant' || _meta.folder === 'Tasks');
     if (!_isTransientChat) {
       Storage.set('lastSessionId', id);
+      // Stamp the session into the URL so a refresh restores THIS chat
+      // instead of reading as a fresh root visit (which lands on a new
+      // chat by design). replaceState: no history-stack pollution; the
+      // hashchange listener no-ops because currentSessionId already
+      // matches. Transient chats stay out of the URL like they stay out
+      // of lastSessionId.
+      try {
+        if (window.location.hash.replace('#', '') !== id) {
+          history.replaceState(null, '', '#' + id);
+        }
+      } catch (_) {}
     }
     // Restore character preset for persistent chats
     try {
