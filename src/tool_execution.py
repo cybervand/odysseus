@@ -245,6 +245,11 @@ def _resolve_tool_path_in_workspace(workspace: str, raw_path: str) -> str:
 # place: any tool that resolves paths through these helpers is confined
 # automatically and cannot accidentally bypass the workspace. contextvars are
 # task-local, so concurrent turns don't leak into each other.
+# Per-session record of the tool call executing RIGHT NOW (doc 008
+# in-flight visibility): {session_id: {tool, args_head, started}}.
+# Written by execute_tool_block, joined into agent_runs.list_runs().
+_INFLIGHT: Dict[str, Dict] = {}
+
 _active_workspace: contextvars.ContextVar = contextvars.ContextVar(
     "agent_active_workspace", default=None
 )
@@ -590,6 +595,15 @@ async def execute_tool_block(
     way out so the binding never leaks to the next tool call.
     """
     token = _active_workspace.set(workspace or None)
+    # In-flight visibility (doc 008): before this, a RUNNING tool call
+    # existed nowhere queryable — logs only recorded completions, so a
+    # blocking `python app.py` held a run hostage for 10 minutes with zero
+    # server-side trace. Registered here, joined into /api/chat/runs.
+    _head = str(getattr(block, "content", ""))[:120].replace("\n", " ")
+    _tool = str(getattr(block, "tool_type", "?"))
+    if session_id:
+        _INFLIGHT[session_id] = {"tool": _tool, "args_head": _head, "started": time.time()}
+    logger.info(f"Tool started: {_tool}: {_head[:80]}")
     try:
         output = await _execute_tool_block_impl(
             block,
@@ -602,6 +616,8 @@ async def execute_tool_block(
         return output
     finally:
         _active_workspace.reset(token)
+        if session_id:
+            _INFLIGHT.pop(session_id, None)
 
 
 async def _execute_tool_block_impl(

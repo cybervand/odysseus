@@ -88,12 +88,25 @@ def get_status(session_id: str) -> Optional[str]:
 def list_runs() -> list:
     """All known runs (running + recently finished, pre-eviction) with their
     status and buffered event count — the discovery half of live observation:
-    a watcher lists runs here, then subscribes via /api/chat/resume."""
-    return [
-        {"session_id": sid, "status": r.status, "events": len(r.buffer),
-         "subscribers": len(r.subscribers)}
-        for sid, r in _RUNS.items()
-    ]
+    a watcher lists runs here, then subscribes via /api/chat/resume. Running
+    entries also carry the tool call executing right now (doc 008 in-flight
+    visibility) so 'stuck on what, for how long' is one API call."""
+    import time as _time
+    try:
+        from src.tool_execution import _INFLIGHT
+    except Exception:
+        _INFLIGHT = {}
+    out = []
+    for sid, r in _RUNS.items():
+        entry = {"session_id": sid, "status": r.status, "events": len(r.buffer),
+                 "subscribers": len(r.subscribers)}
+        cur = _INFLIGHT.get(sid)
+        if cur and r.status == "running":
+            entry["current_tool"] = cur.get("tool")
+            entry["tool_args_head"] = cur.get("args_head")
+            entry["tool_running_s"] = round(_time.time() - cur.get("started", 0), 1)
+        out.append(entry)
+    return out
 
 
 async def _drain(session_id: str, agen: AsyncGenerator[str, None],
