@@ -49,4 +49,12 @@ why — read them before re-litigating or extending an area.
 | [005](005-document-diff-pipeline.md) | Document diff pipeline (chip, editor review, verifier) | Shipped |
 | [006](006-workspace-binding.md) | Workspace selection and confinement | Upstream design documented; extension proposed |
 | [007](007-deployment-runbook.md) | copperwarehouse deployment runbook | Living document |
-| [008](008-tool-policy-api.md) | Per-turn tool policy: record, expose, tell the model | Draft — next build |
+| [008](008-tool-policy-api.md) | Per-turn tool policy: record, expose, tell the model | Phase 1 shipped; tri-state follow-up open |
+| [009](009-model-dialect-adapters.md) | Model dialect adapters (textual tool tongues) | Draft — approved direction |
+| [010](010-project-preview.md) | Project preview (/preview/* routes) | Tier 1 built |
+| [011](011-model-gauntlet.md) | Model gauntlet (capability scoring runs) | Living document |
+| [012](012-dialect-probes.md) | Dialect probes (improvised tool serializations) | Living document |
+| [013](013-prompt-ladder.md) | Prompt ladder (rung methodology, model findings) | Living document |
+| [014](014-live-chat-feed.md) | Event-log-first chat feed (feed_events.db) | Phases 1+3a shipped; 2+4 pending |
+| [015](015-toolchain-provisioning.md) | Toolchain provisioning (manage_framework, persistent tier) | Shipped (layers 2-4) |
+| [016](016-project-ledger.md) | Project ledger: evidence-backed checkboxes as model memory | Draft |

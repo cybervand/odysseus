@@ -1,7 +1,10 @@
 # 014 — Live chat feed: the proper design
 
-**Status:** Design + spike only (user directive 2026-08-06: "we dont
-deploy this round, its purely for design and testing")
+**Status:** Partially shipped — phase 1 (event emission to feed_events.db)
+and phase 3a (history assembled FROM the log, content-tail guard) deployed
+2026-08-06 (c610a4e feedlog3a, d3a0399 feedlog3b). Phases 2 (log-backed
+resume from seq) and 4 (retire checkpoints/poller) pending. Chat-mode
+turns emit no events yet — the log is an agent-mode ledger so far.
 
 ## Why this page exists
 
@@ -183,3 +186,15 @@ interface parity + zero disk footprint.
   method stays in production; spike lives in tests only. Hybrid (D)
   selected as the target; SSE+Last-Event-ID chosen over WebSockets for
   the first cut (keeps the existing SSE rendering path and auth).
+- 2026-08-06 (later) — phase 3a shipped (c610a4e): get_history overlays
+  `assemble_history(feed events)` onto DB rows when run counts align;
+  `history_source: "feed_log"` marks overlaid messages. Same evening
+  (d3a0399): content-tail guard — a short row `content` absent from the
+  assembled rounds is appended, so the overlay can never hide talking
+  the log missed (the "Done." vanish; log lacks reply events for
+  content-mute rounds until the loop emits its terminal tail at source).
+- 2026-08-06 — save-path bypass identified: `recovered_partial`
+  (stream-recovery) saves raw stream text, skipping
+  `clean_thinking_for_save` — 32KB/16-think-block rows in session
+  9bdad2b1. Fix ships with doc 016 (which also covers why those rows
+  poison the MODEL's next-turn context, not just display).

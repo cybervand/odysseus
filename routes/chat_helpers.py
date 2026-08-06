@@ -1007,6 +1007,35 @@ def _normalize_thinking(text: str) -> str:
     return text
 
 
+_THINK_BLOCK_RE = None  # compiled lazily (module avoids top-level re import)
+
+
+def _collect_think_blocks(text: str) -> tuple[str, str]:
+    """Every paired <think> block -> one joined thinking string + residue.
+
+    Built for the recovered_partial shape: N merged rounds, each carrying its
+    own <think> block (msgs 6af088b0/d6a95a35 — 16 blocks, 32KB, saved raw;
+    doc 016). A trailing UNCLOSED <think> counts as thinking too — the run
+    was killed mid-thought. Returns (thinking, residue)."""
+    import re
+    global _THINK_BLOCK_RE
+    if _THINK_BLOCK_RE is None:
+        _THINK_BLOCK_RE = re.compile(r'<think(?:ing)?>([\s\S]*?)</think(?:ing)?>\s*', re.IGNORECASE)
+    blocks = []
+
+    def _take(m):
+        blocks.append(m.group(1).strip())
+        return ""
+
+    residue = _THINK_BLOCK_RE.sub(_take, text)
+    tail = re.search(r'<think(?:ing)?>([\s\S]*)$', residue, re.IGNORECASE)
+    if tail:
+        blocks.append(tail.group(1).strip())
+        residue = residue[:tail.start()]
+    thinking = "\n\n---\n\n".join(b for b in blocks if b)
+    return thinking, residue.strip()
+
+
 def _extract_thinking_meta(text: str) -> dict | None:
     """Extract thinking content into metadata, return {thinking, reply, time} or None."""
     import re
@@ -1027,6 +1056,19 @@ def _extract_thinking_meta(text: str) -> dict | None:
     if think_match:
         thinking = think_match.group(1).strip()
         reply = think_match.group(2).strip()
+        # Multi-block content: one leading-block pass would return a "clean"
+        # reply that still carries every later round's <think>. Applies only
+        # when the text STARTS with a think block (anchor against mangling
+        # messages that merely quote think tags mid-text).
+        if thinking and reply and re.search(r'<think(?:ing)?>', reply, re.IGNORECASE):
+            all_thinking, residue = _collect_think_blocks(clean)
+            if all_thinking and residue:
+                return {"thinking": all_thinking, "reply": residue, "time": think_time}
+            # All blocks, zero talk: reasoning-only. Returning the leading
+            # block's extraction here would put a raw <think> block in the
+            # REPLY slot — keep the whole text as content instead (same
+            # blank-bubble rule as the single-block case below).
+            return None
         # Only strip the thinking out into metadata when there's an actual reply
         # left over. If reply is empty (model hit max_tokens inside <think>, or
         # the turn was reasoning-only), keep the raw text as content — otherwise

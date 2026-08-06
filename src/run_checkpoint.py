@@ -69,11 +69,21 @@ def promote_if_orphaned(session_id: str, session_manager, run_status) -> bool:
         return False
     try:
         from core.models import ChatMessage
+        # Checkpoint text is the joined round_texts — post reasoning-merge,
+        # each round carries its own <think> block. Saving it raw shipped
+        # 32KB/16-block rows that broke display AND re-entered the model's
+        # next-turn context verbatim (doc 016). Extract thinking to metadata
+        # first; a reasoning-only checkpoint stays raw (extractor contract).
+        from routes.chat_helpers import clean_thinking_for_save
+        reply, md = clean_thinking_for_save(
+            data["text"],
+            {"recovered_partial": True, "rounds": data.get("round")},
+        )
         session_manager.add_message(session_id, ChatMessage(
             "assistant",
-            data["text"] + "\n\n*[recovered — the run was interrupted before finishing; "
-                           "this is everything it produced]*",
-            metadata={"recovered_partial": True, "rounds": data.get("round")},
+            (reply or data["text"]) + "\n\n*[recovered — the run was interrupted before finishing; "
+                                      "this is everything it produced]*",
+            metadata=md,
         ))
         logger.info("[checkpoint] promoted orphaned partial for %s (%d chars, round %s)",
                     session_id, len(data["text"]), data.get("round"))
