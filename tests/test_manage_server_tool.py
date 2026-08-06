@@ -116,6 +116,21 @@ def test_start_status_restart_stop_cycle(monkeypatch, tmp_path):
     assert r["exit_code"] == 0
 
 
+def test_pid_alive_eperm_means_alive(monkeypatch):
+    # EPERM proves the process exists (owned by another uid). Misreading it
+    # as dead made the poller reap a live server 1.2s after launch.
+    import os as _os
+    from core import platform_compat as pc
+    if pc.IS_WINDOWS:
+        return  # POSIX-only branch
+
+    def raise_eperm(pid, sig):
+        raise PermissionError("Operation not permitted")
+
+    monkeypatch.setattr(_os, "kill", raise_eperm)
+    assert pc.pid_alive(12345) is True
+
+
 def test_unknown_server_errors(monkeypatch, tmp_path):
     _fake_bg(monkeypatch, tmp_path)
     r = _run(ManageServerTool(), {"action": "restart", "name": "ghost"})

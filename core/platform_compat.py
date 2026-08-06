@@ -105,6 +105,11 @@ def pid_alive(pid: Optional[int]) -> bool:
     try:
         os.kill(pid, 0)
         return True
+    except PermissionError:
+        # EPERM: the process EXISTS but belongs to another user — signalling
+        # is denied, existence is proven. Treating this as "dead" made the
+        # bg_jobs poller reap a live server launched under a different uid.
+        return True
     except (OSError, ProcessLookupError):
         return False
 
