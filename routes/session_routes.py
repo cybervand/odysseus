@@ -837,7 +837,17 @@ def setup_session_routes(
                     for row, asm in zip(assistant_rows, agent_runs_assembled):
                         md = row.setdefault("metadata", {})
                         if asm["round_texts"]:
-                            md["round_texts"] = asm["round_texts"]
+                            # The log has no reply events for content-mute
+                            # rounds (gemma's "Done." lives only in the row
+                            # content) — the overlay must never hide talking
+                            # the log missed. Short un-captured content tails
+                            # are appended as a final round.
+                            _rtexts = list(asm["round_texts"])
+                            _content = (row.get("content") or "").strip()
+                            if (_content and len(_content) < 500
+                                    and _content not in "\n\n".join(_rtexts)):
+                                _rtexts.append(_content)
+                            md["round_texts"] = _rtexts
                             # Thinking now lives inline in round_texts; drop
                             # the metadata copy so the renderer's graft
                             # doesn't render it twice.

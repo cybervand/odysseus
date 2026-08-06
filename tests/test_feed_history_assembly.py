@@ -110,6 +110,23 @@ def test_bare_name_tool_end_and_status_exit_codes():
     assert bash["status"] == "fail" and bash["exit_code"] == 1
 
 
+def test_content_mute_run_has_thinking_but_no_reply():
+    # The gemma shape as the log ACTUALLY records it: thinking + tools,
+    # zero reply events ("Done." never entered the round pipeline). The
+    # assembler must still produce the thinking round; the ROUTE overlay
+    # is responsible for appending the row-content tail.
+    events = [
+        _ev("user_msg", "build it"),
+        _ev("thinking", "plan plan plan"),
+        _ev("tool_start", "write_file"),
+        _tool_end("write_file", "ok"),
+    ]
+    (run,) = assemble_history(events)
+    assert len(run["round_texts"]) == 1
+    assert run["round_texts"][0].startswith("<think>")
+    assert run["round_texts"][0].endswith("</think>")
+
+
 def test_tag_model_think_not_double_wrapped():
     events = [
         _ev("user_msg", "go"),
