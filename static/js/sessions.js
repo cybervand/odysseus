@@ -2783,7 +2783,7 @@ async function _checkServerStream(sessionId) {
 // (_resumingStreams), so calling it on an interval is safe. When a live
 // run exists for the session on screen, the buffer replays and the tab
 // goes live mid-run, same as the watcher script.
-setInterval(() => {
+setInterval(async () => {
   try {
     if (document.visibilityState !== 'visible') return;
     const sid = getCurrentSessionId();
@@ -2791,6 +2791,16 @@ setInterval(() => {
     const cm = window.chatModule;
     if (!cm || !cm.resumeStream) return;
     if (cm.hasActiveStream && cm.hasActiveStream(sid)) return;
+    // Gate on LIVE status first: the resume endpoint also replays
+    // FINISHED buffered runs, and a rich replay ends in a session reload
+    // that wipes in-progress UI state — a blind 6s resumeStream loop ate
+    // a user's composed message (2026-08-06). Only attach to runs that
+    // are actually streaming right now.
+    const r = await fetch(`${API_BASE}/api/chat/stream_status/${sid}`);
+    if (!r.ok) return;
+    const info = await r.json();
+    if (info.status !== 'streaming') return;
+    if (cm.hasActiveStream && cm.hasActiveStream(sid)) return; // re-check post-await
     cm.resumeStream(sid);
   } catch (_) { /* next tick */ }
 }, 6000);
