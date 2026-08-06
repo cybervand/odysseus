@@ -105,13 +105,36 @@ def render_timeline(events):
             pending_tools = []
             i += 1
         elif ev["kind"] == "thinking":
+            # Tools called MID-THOUGHT belong to the thinking span (models
+            # read files / check things while reasoning) — attributing them
+            # to the reply would lie about when the work happened. Failed
+            # tools are marked: failures are the most diagnostic events.
             start = ev["ts"]
             text = []
-            while i < len(events) and events[i]["kind"] == "thinking":
-                text.append(events[i]["payload"])
-                end = events[i]["ts"]
+            think_tools = []
+            def _more_thinking_ahead(j):
+                # A tool belongs to thinking only if more thinking follows
+                # it before the reply — otherwise it opens the action phase.
+                while j < len(events) and events[j]["kind"] in ("tool_start", "tool_end"):
+                    j += 1
+                return j < len(events) and events[j]["kind"] == "thinking"
+
+            while i < len(events) and events[i]["kind"] in ("thinking", "tool_start", "tool_end"):
+                e = events[i]
+                if e["kind"] == "thinking":
+                    text.append(e["payload"])
+                    end = e["ts"]
+                elif e["kind"] == "tool_start":
+                    if not _more_thinking_ahead(i):
+                        break            # action phase begins here
+                    if e["payload"] not in think_tools:
+                        think_tools.append(e["payload"])
+                        end = e["ts"]
+                elif e["kind"] == "tool_end" and e.get("status") == "fail":
+                    think_tools = [t + "✗" if t == e["payload"] else t for t in think_tools]
                 i += 1
-            lines.append(f"{_hms(start)}-{_hms(end)} Agent: thought: {''.join(text)}")
+            tools = f"[tools: {', '.join(think_tools)}] " if think_tools else ""
+            lines.append(f"{_hms(start)}-{_hms(end)} Agent: {tools}thought: {''.join(text)}")
         elif ev["kind"] == "tool_start":
             # The action phase (tools + reply) is ONE span in the timeline —
             # per the user's example, the reply line's clock starts when the
@@ -209,6 +232,29 @@ def test_timeline_renders_the_users_exact_example():
                         "build X for me, i should build X for him in X way.")
     assert lines[2].startswith("19:00:30-19:01:05 Agent: [tools: bash, python, find_images] replied: Hi! Absolutely")
     assert "[code written: X]" in lines[2]
+
+
+def test_tools_called_mid_thought_attach_to_the_thinking_span():
+    T = 1750000000
+    events = [
+        {"ts": T, "kind": "user_msg", "payload": "fix the bug"},
+        {"ts": T + 1, "kind": "thinking", "payload": "let me look at the file first. "},
+        {"ts": T + 2, "kind": "tool_start", "payload": "read_file"},
+        {"ts": T + 4, "kind": "tool_end", "payload": "read_file", "status": "ok"},
+        {"ts": T + 5, "kind": "thinking", "payload": "ah, the selector is wrong."},
+        {"ts": T + 6, "kind": "tool_start", "payload": "bash"},
+        {"ts": T + 8, "kind": "tool_end", "payload": "bash", "status": "fail"},
+        {"ts": T + 9, "kind": "thinking", "payload": " bash failed, trying an edit."},
+        {"ts": T + 10, "kind": "reply", "payload": "Fixed the selector."},
+    ]
+    lines = render_timeline(events)
+    # One thinking span despite embedded tool calls; tools attributed to it.
+    assert len(lines) == 3
+    assert "[tools: read_file, bash✗] thought:" in lines[1]
+    assert "bash failed, trying an edit" in lines[1]
+    # The reply span carries no tools — they all ran during thinking.
+    assert "[tools:" not in lines[2]
+    assert lines[2].endswith("replied: Fixed the selector.")
 
 
 def test_timeline_without_tools_or_thinking():
