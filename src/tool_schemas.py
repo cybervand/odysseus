@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 _REQUIRED_NATIVE_TOOL_ARGS = {
     "web_search": ("query", "queries"),
     "web_fetch": ("url",),
+    "find_images": ("query", "subject"),
     "read_file": ("path",),
     "write_file": ("path",),
     "edit_file": ("path",),
@@ -87,6 +88,21 @@ FUNCTION_TOOL_SCHEMAS = [
                     "full": {"type": "boolean", "description": "Raise the download budget to the hard cap for large pages/files. Use only after a result reported partial content."}
                 },
                 "required": ["url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_images",
+            "description": "Find VERIFIED open-license image URLs for a subject (Wikimedia Commons). The result lines are already checked live (HTTP 200) — use them directly in HTML/markdown. Always use this to get real images; never invent image URLs and never scrape image pages by hand.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What the image should show, e.g. 'mountain lodge winter' or 'latte art'"},
+                    "count": {"type": "integer", "description": "How many verified images to return (1-5, default 1)"}
+                },
+                "required": ["query"]
             }
         }
     },
@@ -1445,7 +1461,7 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
             content = json.dumps(args)
         else:
             content = args.get("path", "")
-    elif tool_type in ("grep", "glob", "ls"):
+    elif tool_type in ("grep", "glob", "ls", "find_images"):
         content = json.dumps(args) if args else "{}"
     elif tool_type == "get_workspace":
         content = ""

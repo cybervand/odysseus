@@ -5,6 +5,86 @@ from typing import Dict, Any
 
 from src.constants import MAX_OUTPUT_CHARS
 
+
+class FindImagesTool:
+    """One-call verified image sourcing (doc 013, the images cliff).
+
+    Every prior image path was a multi-step PROCEDURE (search → fetch →
+    extract → curl-verify) and five straight runs proved 30B models
+    improvise around procedures — inventing URLs, scraping imaginary DOM,
+    shipping known-404s. Their native tool-calling is the one thing they
+    execute faithfully, so the whole pipeline lives inside this tool:
+    Wikimedia Commons API search + server-side HEAD verification. The
+    model asks for a subject; it receives URLs that are already proven
+    live. Nothing left to improvise.
+    """
+
+    API = ("https://commons.wikimedia.org/w/api.php?action=query&format=json"
+           "&generator=search&gsrnamespace=6&gsrlimit=8&prop=imageinfo"
+           "&iiprop=url&iiurlwidth=960&gsrsearch=")
+
+    def _search_and_verify(self, query: str, count: int) -> list:
+        import urllib.request
+        import urllib.parse
+        req = urllib.request.Request(
+            self.API + urllib.parse.quote(query),
+            headers={"User-Agent": "odysseus-find-images/1.0"},
+        )
+        data = json.load(urllib.request.urlopen(req, timeout=15))
+        pages = (data.get("query") or {}).get("pages") or {}
+        found = []
+        for p in sorted(pages.values(), key=lambda x: x.get("index", 99)):
+            title = p.get("title", "")
+            if not title.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
+            ii = (p.get("imageinfo") or [{}])[0]
+            url = (ii.get("thumburl") or ii.get("url") or "").split("?")[0]
+            if not url:
+                continue
+            try:
+                head = urllib.request.Request(
+                    url, method="HEAD",
+                    headers={"User-Agent": "odysseus-find-images/1.0"},
+                )
+                status = urllib.request.urlopen(head, timeout=10).status
+            except Exception:
+                continue
+            if status == 200:
+                found.append({"title": title, "url": url})
+            if len(found) >= count:
+                break
+        return found
+
+    async def execute(self, content: str, ctx: dict) -> dict:
+        raw = (content or "").strip()
+        query = raw
+        count = 1
+        if raw.startswith("{"):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    query = str(parsed.get("query") or parsed.get("subject") or "").strip()
+                    c = parsed.get("count")
+                    if isinstance(c, int) and 1 <= c <= 5:
+                        count = c
+            except json.JSONDecodeError:
+                pass
+        if not query:
+            return {"error": 'find_images: provide a subject, e.g. {"query": "mountain lodge winter"}', "exit_code": 1}
+        loop = asyncio.get_running_loop()
+        try:
+            found = await asyncio.wait_for(
+                loop.run_in_executor(None, self._search_and_verify, query, count),
+                timeout=45,
+            )
+        except Exception as e:
+            return {"error": f"find_images: {query}: {e}", "exit_code": 1}
+        if not found:
+            return {"error": f"find_images: no verified images found for '{query}' — try different words (e.g. broader or in English)", "exit_code": 1}
+        lines = [f"VERIFIED 200: {f['url']}  ({f['title']})" for f in found]
+        return {"output": f"Verified open-license images for '{query}' (Wikimedia Commons):\n" + "\n".join(lines), "exit_code": 0}
+
+
 class WebSearchTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.search import comprehensive_web_search

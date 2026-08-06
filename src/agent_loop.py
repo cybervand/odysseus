@@ -570,6 +570,12 @@ Use this instead of `bash`, `curl`, `python`, `requests`, or scraping code for w
 ```
 Fetch and read the text content of a SPECIFIC URL the user names (e.g. "check example.com", "what does this page say <url>"). A bare domain like `example.com` works (defaults to https). Use this when you already have a concrete URL. For open-ended lookups use `web_search`, and for "research X" jobs use `trigger_research`.""",
 
+    "find_images": """\
+```find_images
+{"query": "<what the image should show>", "count": 1}
+```
+Get VERIFIED open-license image URLs (Wikimedia Commons). Result lines marked `VERIFIED 200:` are already checked live — put those URLs straight into your HTML/markdown. ALWAYS use this when a page needs real images. NEVER invent image URLs, never guess Commons filenames, never scrape image sites with python/curl — every invented URL is a broken image on the user's page.""",
+
     "read_file": """\
 ```read_file
 <file path>
