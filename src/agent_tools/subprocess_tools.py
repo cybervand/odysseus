@@ -327,6 +327,41 @@ def _server_command_guard(content: str):
     }
 
 
+# Global installs in bash land in whatever tier the package manager
+# defaults to — historically the ephemeral container FS, where they die on
+# deploy (the flask lesson, doc 015). manage_framework owns the persistent
+# tier; bash redirects there. Project-LOCAL installs (plain `npm install`
+# in a project dir) stay allowed — that is the correct default.
+_GLOBAL_INSTALL_RE = re.compile(
+    r"\b(npm (?:install|i|add) (?:-g|--global)|npm (?:-g|--global) (?:install|i|add)|"
+    r"yarn global add|pnpm (?:add|install) (?:-g|--global))\b"
+)
+
+
+def _global_install_guard(content: str):
+    """Return an error dict when the command is a global package install
+    (and not #!fg-overridden); else None."""
+    lines = content.split("\n")
+    first = next((ln.strip() for ln in lines if ln.strip()), "")
+    if first.lower() in ("#!fg", "# fg"):
+        return None
+    m = _GLOBAL_INSTALL_RE.search(content)
+    if not m:
+        return None
+    return {
+        "error": (
+            f"bash: refusing '{m.group(1)}' — global installs from bash land in "
+            "the wrong tier and vanish on the next app update. Use your "
+            'manage_framework tool instead: {"action": "install", "name": '
+            '"<framework>"} — it installs to the persistent shared tier, every '
+            "chat can use it, and it survives updates. Project-local deps are "
+            "different: plain `npm install <pkg>` inside your project folder is "
+            "correct and allowed."
+        ),
+        "exit_code": 1,
+    }
+
+
 # `sh: 1: lsof: not found` / `bash: netstat: command not found`
 _NOT_FOUND_RE = re.compile(r"(?:^|\n)(?:/bin/)?(?:ba)?sh: (?:\d+: )?([\w.+-]+): (?:command )?not found", re.MULTILINE)
 
@@ -355,7 +390,7 @@ class BashTool:
         from src.tool_execution import agent_cwd, _truncate
         if isinstance(content, dict):
             content = str(content.get("command") or content.get("cmd") or content.get("code") or "")
-        _guard = _server_command_guard(content or "")
+        _guard = _server_command_guard(content or "") or _global_install_guard(content or "")
         if _guard:
             return _guard
         progress_cb = ctx.get("progress_cb")

@@ -576,6 +576,12 @@ Fetch and read the text content of a SPECIFIC URL the user names (e.g. "check ex
 ```
 Run and manage long-lived servers. NEVER start a server in bash — it never exits and blocks everything. Actions: start, stop, restart, status, logs, list. CRITICAL: after editing server code you MUST `{"action": "restart", "name": "myapp"}` — a running process does NOT see file edits; restarting is how your fix goes live.""",
 
+    "manage_framework": """\
+```manage_framework
+{"action": "install", "name": "tailwindcss"}
+```
+Install frameworks/CLI tools to the SHARED tier: survives app updates, available in every chat, on PATH immediately. Use for tools needed everywhere (vite, tailwindcss, typescript, flask...). NOT for project deps — those are plain `npm install <pkg>` inside your project folder. Actions: install, upgrade, remove, list, info. A name outside the known set needs "manager": "npm" or "pip".""",
+
     "find_images": """\
 ```find_images
 {"query": "<what the image should show>", "count": 1}
@@ -3537,6 +3543,20 @@ async def stream_agent_loop(
                     "must use relative asset paths (vite: base './') or they "
                     "render blank from the preview path."
                 ),
+            })
+
+    # Doc 015: disk visibility without prompt visibility is only half of
+    # "other chats can use it" — tell every turn what the shared tier holds.
+    if not guide_only:
+        try:
+            from src.toolchain import context_line as _tc_line
+            _tc = _tc_line()
+        except Exception:
+            _tc = ""
+        if _tc:
+            messages = _insert_before_latest_user(messages, {
+                "role": "system",
+                "content": _tc,
             })
 
     # Doc 008 policy delta: break stale "I have no shell" self-narrative.

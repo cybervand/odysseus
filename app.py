@@ -1013,6 +1013,16 @@ async def _startup_event():
     global upload_cleanup_task
     logger.info("Application starting up...")
     webhook_manager.set_loop(asyncio.get_running_loop())
+    # Doc 015: point npm/pip at the persistent tier BEFORE any tool
+    # subprocess spawns (children inherit os.environ), then reconcile the
+    # toolchain manifest in a thread — an image swap breaks nothing that
+    # the manifest remembers.
+    try:
+        from src.toolchain import ensure_toolchain_env, start_reconciler
+        ensure_toolchain_env()
+        start_reconciler()
+    except Exception as _e:
+        logger.warning("Toolchain tier init failed (non-critical): %s", _e)
     # Wipe any leftover incognito sessions from previous process — they're
     # ephemeral by design and must not survive a restart.
     try:

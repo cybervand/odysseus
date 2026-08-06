@@ -112,6 +112,23 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "manage_framework",
+            "description": "Install/manage frameworks and CLI tools in the SHARED persistent tier (survives app updates, available to every chat). Use for tools needed everywhere: vite, tailwindcss, typescript, flask... NOT for project deps — those are plain `npm install` inside the project. Actions: install, upgrade, remove, list, info. Unknown names need \"manager\": \"npm\" or \"pip\".",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["install", "upgrade", "remove", "list", "info"]},
+                    "name": {"type": "string", "description": "Framework name, e.g. 'tailwindcss'"},
+                    "version": {"type": "string", "description": "Optional version pin, e.g. '7.1'"},
+                    "manager": {"type": "string", "enum": ["npm", "pip"], "description": "Required for names outside the known set"}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "find_images",
             "description": "Find VERIFIED open-license image URLs for a subject (Wikimedia Commons). The result lines are already checked live (HTTP 200) — use them directly in HTML/markdown. Always use this to get real images; never invent image URLs and never scrape image pages by hand.",
             "parameters": {
@@ -1479,7 +1496,7 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
             content = json.dumps(args)
         else:
             content = args.get("path", "")
-    elif tool_type in ("grep", "glob", "ls", "find_images", "manage_server"):
+    elif tool_type in ("grep", "glob", "ls", "find_images", "manage_server", "manage_framework"):
         content = json.dumps(args) if args else "{}"
     elif tool_type == "get_workspace":
         content = ""
