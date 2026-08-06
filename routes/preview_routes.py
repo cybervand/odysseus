@@ -60,7 +60,21 @@ async def preview_file(rel_path: str, request: Request):
         # page's relative asset links (styles.css, app.js) inside the dir.
         if rel_path and not rel_path.endswith("/"):
             return RedirectResponse(url=f"/preview/{rel_path}/")
-        target = os.path.join(target, "index.html")
+        index = os.path.join(target, "index.html")
+        if not os.path.isfile(index):
+            # Models name entry files unpredictably (menu.html, home.html).
+            # When the folder holds exactly ONE html file, serve it instead
+            # of 404ing; ambiguity (0 or 2+) still 404s — no listings.
+            try:
+                htmls = [
+                    f for f in os.listdir(target)
+                    if f.lower().endswith(".html") and not f.startswith(".")
+                ]
+            except OSError:
+                htmls = []
+            if len(htmls) == 1:
+                index = os.path.join(target, htmls[0])
+        target = index
     if _denied(target) or not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="Not found")
     media_type = mimetypes.guess_type(target)[0] or "application/octet-stream"

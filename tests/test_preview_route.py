@@ -97,6 +97,25 @@ async def test_html_gets_back_overlay_but_assets_do_not(workspace):
 
 
 @pytest.mark.anyio
+async def test_dir_without_index_serves_lone_html(workspace, tmp_path):
+    # qwen named its entry file menu.html — a folder with exactly one html
+    # serves it; two or zero still 404 (no directory listings).
+    lone = tmp_path / "club_site"
+    lone.mkdir()
+    (lone / "menu.html").write_text("<h1>LodesOfMone</h1>", encoding="utf-8")
+    two = tmp_path / "ambiguous"
+    two.mkdir()
+    (two / "a.html").write_text("a", encoding="utf-8")
+    (two / "b.html").write_text("b", encoding="utf-8")
+    async with _client(_app()) as c:
+        r = await c.get("/preview/club_site/")
+        assert r.status_code == 200
+        assert "LodesOfMone" in r.text
+        r2 = await c.get("/preview/ambiguous/")
+        assert r2.status_code == 404
+
+
+@pytest.mark.anyio
 async def test_missing_file_404(workspace):
     async with _client(_app()) as c:
         r = await c.get("/preview/coffee_site/nope.js")
