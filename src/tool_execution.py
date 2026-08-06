@@ -605,6 +605,11 @@ async def execute_tool_block(
         _INFLIGHT[session_id] = {"tool": _tool, "args_head": _head, "started": time.time()}
     logger.info(f"Tool started: {_tool}: {_head[:80]}")
     try:
+        from src import feed_log
+        feed_log.emit(session_id, "tool_start", _tool)
+    except Exception:
+        pass
+    try:
         output = await _execute_tool_block_impl(
             block,
             session_id=session_id,
@@ -613,6 +618,20 @@ async def execute_tool_block(
             progress_cb=progress_cb,
             tool_policy=tool_policy,
         )
+    except Exception:
+        try:
+            from src import feed_log
+            feed_log.emit(session_id, "tool_end", json.dumps({"tool": _tool, "status": "fail"}))
+        except Exception:
+            pass
+        raise
+    else:
+        try:
+            from src import feed_log
+            _status = feed_log.tool_status(output[1] if isinstance(output, tuple) and len(output) > 1 else {})
+            feed_log.emit(session_id, "tool_end", json.dumps({"tool": _tool, "status": _status}))
+        except Exception:
+            pass
         return output
     finally:
         _active_workspace.reset(token)

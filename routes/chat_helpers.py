@@ -715,6 +715,13 @@ async def build_chat_context(
         _append_incognito_message(session_id, "user", preprocessed.user_content, user_meta)
     else:
         add_user_message(sess, chat_handler, preprocessed, incognito=False)
+    # Doc 014 feed log (dual-write): the user's message is the feed's
+    # first-class opening event; incognito routes to the ephemeral log.
+    try:
+        from src import feed_log
+        feed_log.emit(session_id, "user_msg", preprocessed.user_content, incognito=incognito)
+    except Exception:
+        pass
 
     # Fire events
     if not incognito:

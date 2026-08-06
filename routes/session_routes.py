@@ -818,6 +818,25 @@ def setup_session_routes(
         except Exception:
             pass
         return {"history": [msg.to_dict() for msg in session.history]}
+
+    @router.get("/session/{sid}/feed")
+    def get_feed(request: Request, sid: str, from_seq: int = 0):
+        """Doc 014: the session's raw event log (durable sessions only —
+        incognito feeds live in RAM and are not exposed post-hoc by
+        design). Resume-shaped: pass from_seq = last seen seq + 1."""
+        _verify_session_owner(request, sid)
+        from src.feed_log import get_log
+        log = get_log(incognito=False)
+        return {"events": log.tail(sid, from_seq), "head": log.head(sid)}
+
+    @router.get("/session/{sid}/timeline")
+    def get_timeline(request: Request, sid: str):
+        """Doc 014 timeline: what was thought, what ran (with ok/error/fail),
+        what was replied, and how long each phase took."""
+        _verify_session_owner(request, sid)
+        from src.feed_log import get_log, render_timeline
+        events = get_log(incognito=False).tail(sid, 0)
+        return {"timeline": render_timeline(events), "events": len(events)}
     
     @router.get("/session/{sid}/export")
     def export_session(request: Request, sid: str, fmt: str = "md", filename: str = ""):

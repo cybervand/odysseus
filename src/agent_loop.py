@@ -3429,6 +3429,15 @@ async def stream_agent_loop(
 
     mcp_mgr = get_mcp_manager()
     prep_timings: Dict[str, float] = {}
+    # Doc 014 feed log: register this run so tool_execution can emit
+    # events without parameter threading; incognito routes to the
+    # ephemeral in-RAM log.
+    try:
+        from src import feed_log
+        feed_log.register_run(session_id, incognito)
+        feed_log.emit(session_id, "run_state", "started", incognito=incognito)
+    except Exception:
+        pass
     disabled_tools = set(disabled_tools or [])
     # Doc 008 `source` field: gate attribution carried from the route policy,
     # extended by the loop-level gates below. setdefault keeps the earliest
@@ -4872,6 +4881,16 @@ async def stream_agent_loop(
         # on reload (#3222 follow-up).
         cleaned_round = strip_tool_blocks(round_response, skip_fenced=(_is_api_model and not used_native and not guide_only and not used_fenced_fallback)).strip()
         round_texts.append(cleaned_round)
+        # Doc 014 feed log (dual-write): per-round thinking + reply events
+        # with real timestamps — the timeline's raw material.
+        try:
+            from src import feed_log
+            if round_reasoning:
+                feed_log.emit(session_id, "thinking", round_reasoning, incognito=incognito)
+            if cleaned_round:
+                feed_log.emit(session_id, "reply", cleaned_round, incognito=incognito)
+        except Exception:
+            pass
         # Checkpoint the accumulated reply every round (doc 013): a killed
         # run (deploy, crash) must leave what the user watched behind
         # instead of taking it to the grave. Promoted to a real history
