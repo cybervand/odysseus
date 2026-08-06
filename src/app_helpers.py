@@ -46,7 +46,10 @@ def serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
         raise HTTPException(500, "Internal server error")
     nonce = getattr(request.state, "csp_nonce", "")
     html = html.replace("{{CSP_NONCE}}", nonce)
-    return HTMLResponse(html)
+    # App-shell pages must revalidate like the modules they load (the static
+    # mount already serves .js/.css with no-cache): a cached index.html
+    # pointing at live-revalidated modules is the last stale-code loophole.
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 def inside_base_dir(base_dir: str, path: str) -> bool:
