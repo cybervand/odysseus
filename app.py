@@ -670,6 +670,11 @@ app.include_router(setup_session_routes(
 from routes.admin_wipe.admin_wipe_routes import setup_admin_wipe_routes
 app.include_router(setup_admin_wipe_routes(session_manager))
 
+# Named servers as a service (doc 017): panel / server chip / /server slash
+# commands — user-driven control over agent-launched servers, model-free.
+from routes.server_routes import setup_server_routes
+app.include_router(setup_server_routes())
+
 # Memory
 from routes.memory.memory_routes import setup_memory_routes
 memory_router = setup_memory_routes(memory_manager, session_manager, memory_vector=memory_vector)
