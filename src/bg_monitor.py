@@ -136,11 +136,13 @@ async def _loop():
     while True:
         try:
             for rec in bg_jobs.pending_followups():
-                # System-owned jobs (boot/deploy server relaunches, and the
-                # legacy "__ops__" fake session) have no chat to re-invoke —
-                # without this skip the follow-up retried "Session not found"
-                # forever, 12+ warnings per tick (2026-08-07 boot log).
-                if rec.get("session_id") in (bg_jobs.SYSTEM_OWNER, bg_jobs.LEGACY_OPS_SESSION):
+                # Jobs with no chat to re-invoke — system-owned (boot/deploy
+                # relaunches), the legacy "__ops__" fake session, and jobs
+                # with an EMPTY session id (fossils of the anonymous registry
+                # dispatch, 2026-08-07: two of them retried every 5s forever
+                # and their log spam blocked deploy preflights). Skip once,
+                # permanently.
+                if rec.get("session_id") in (bg_jobs.SYSTEM_OWNER, bg_jobs.LEGACY_OPS_SESSION, "", None):
                     bg_jobs.mark_followed_up(rec["id"])
                     continue
                 try:
