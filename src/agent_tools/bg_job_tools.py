@@ -179,8 +179,12 @@ class ManageServerTool:
                 return {"error": f"manage_server: {e}", "exit_code": 1}
             note = await _truth_check(st)
             st = bg_jobs.server_status(name) or st
+            # Moment-of-relevance teaching (the campsite lesson): schema
+            # prose doesn't stick — the next move must be in the result.
+            nxt = ("" if note else
+                   f'\nVerify it serves: {{"action": "query", "name": "{name}", "path": "/"}}')
             return {"output": "Started. This is YOUR server — edit its code freely; "
-                              "'restart' applies your edits.\n" + _fmt(st) + note,
+                              "'restart' applies your edits.\n" + _fmt(st) + note + nxt,
                     "exit_code": 0}
 
         if st is None:
@@ -206,7 +210,9 @@ class ManageServerTool:
             note = await _truth_check(st)
             st = bg_jobs.server_status(name) or st
             verb = "Restarted with the NEW command." if new_command else "Restarted — code edits are now live."
-            return {"output": verb + "\n" + _fmt(st) + note,
+            nxt = ("" if note else
+                   f'\nVerify it serves: {{"action": "query", "name": "{name}", "path": "/"}}')
+            return {"output": verb + "\n" + _fmt(st) + note + nxt,
                     "exit_code": 0}
 
         if action == "stop":
