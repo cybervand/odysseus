@@ -95,15 +95,19 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "manage_server",
-            "description": "Run and manage long-lived servers (web apps, APIs, dev servers). NEVER start a server with bash — it never exits and blocks everything. Actions: start (name+command+cwd+port), stop, restart, status, logs, list. CRITICAL: after editing server code you MUST restart — a running process does not see file edits.",
+            "description": "Run and manage long-lived servers (web apps, APIs, dev servers). These are YOUR servers — edit their code freely. NEVER start a server with bash — it never exits and blocks everything. Ports are ASSIGNED by Odysseus from its reserved range and exported to your process as the PORT env var: write apps that read PORT (do not hardcode a port, do not pass one here). Actions: start (name+command+cwd), stop, restart, status, logs, list, query (HTTP-probe your server: path/method/body — works even without bash), adopt (attach a server from another chat to this one), remove (delete registry entry). CRITICAL: after editing server code you MUST restart — a running process does not see file edits.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["start", "stop", "restart", "status", "logs", "list"]},
+                    "action": {"type": "string", "enum": ["start", "stop", "restart", "status", "logs", "list", "query", "adopt", "remove"]},
                     "name": {"type": "string", "description": "Server name, e.g. 'skilodge'"},
                     "command": {"type": "string", "description": "start only: the launch command, e.g. 'python app.py'"},
                     "cwd": {"type": "string", "description": "start only: working directory, e.g. '/app/data/skilodge'"},
-                    "port": {"type": "integer", "description": "start only: the port it listens on (enables the listening check)"}
+                    "port": {"type": "integer", "description": "start only, OPTIONAL: normally omit — the port is assigned and exported as the PORT env var"},
+                    "autostart": {"type": "boolean", "description": "start only: relaunch this server automatically when Odysseus restarts"},
+                    "path": {"type": "string", "description": "query only: request path starting with '/', default '/'"},
+                    "method": {"type": "string", "enum": ["GET", "POST"], "description": "query only: HTTP method, default GET"},
+                    "body": {"type": "string", "description": "query only: POST body"}
                 },
                 "required": ["action"]
             }

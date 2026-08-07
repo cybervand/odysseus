@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -79,12 +80,14 @@ def _pid_alive(pid: Optional[int]) -> bool:
 
 
 def launch(command: str, session_id: str, cwd: Optional[str] = None,
-           max_runtime_s: int = DEFAULT_MAX_RUNTIME_S) -> Dict[str, Any]:
+           max_runtime_s: int = DEFAULT_MAX_RUNTIME_S,
+           env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """Launch `command` detached. Returns the job record (status='running').
 
     Output + the final exit code are written to files so status survives a
     server restart. The process is put in its own session (setsid) so it
-    outlives the request/stream that started it.
+    outlives the request/stream that started it. `env` entries are overlaid
+    on the parent environment (used for PORT assignment, doc 017).
     """
     _JOBS_DIR.mkdir(parents=True, exist_ok=True)
     job_id = uuid.uuid4().hex[:12]
@@ -136,6 +139,7 @@ def launch(command: str, session_id: str, cwd: Optional[str] = None,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
         cwd=cwd or None,
+        env={**os.environ, **env} if env else None,
         **detached_popen_kwargs(),  # detach from the request lifecycle (setsid / DETACHED_PROCESS)
     )
 
@@ -291,6 +295,76 @@ def kill(job_id: str) -> Optional[Dict[str, Any]]:
 _SERVERS_FILE = _JOBS_DIR / "servers.json"
 SERVER_MAX_RUNTIME_S = 7 * 24 * 3600
 
+# ── Port range + ownership (doc 017) ──
+# Servers get ports ASSIGNED from a reserved range instead of self-reporting
+# them (skilodge drift: registry said 8091, app.py bound 8090 — nothing
+# checked). The launched process receives PORT in its environment; the range
+# stays clear of cookbook's model-serving allocator (8000+) and every common
+# dev default. NO per-user caps — homelab; the range is the backstop.
+_DEFAULT_PORT_RANGE = (13000, 13999)
+
+# Boot/deploy relaunches are owned by the system, not a chat. bg_monitor
+# skips follow-ups for this owner (and the legacy "__ops__" fake session
+# that made it retry-spam "Session __ops__ not found" forever).
+SYSTEM_OWNER = "__system__"
+LEGACY_OPS_SESSION = "__ops__"
+
+
+class PortAllocationError(ValueError):
+    """Raised with a TEACHING message: every port failure names the cause and
+    the next action — never a bare 'address in use' (doc 017 §1)."""
+
+
+def port_range() -> tuple:
+    raw = os.environ.get("ODYSSEUS_SERVER_PORT_RANGE", "")
+    m = re.match(r"^\s*(\d{2,5})\s*-\s*(\d{2,5})\s*$", raw)
+    if m:
+        lo, hi = int(m.group(1)), int(m.group(2))
+        if 1 <= lo <= hi <= 65535:
+            return lo, hi
+    return _DEFAULT_PORT_RANGE
+
+
+def _allocate_port(servers: Dict[str, Dict[str, Any]], name: str,
+                   requested: Optional[int]) -> int:
+    """Assign a port for server `name`. Diagnoses conflicts by owner instead
+    of reporting them. Grandfathering: a server keeps its previously stored
+    port even if out of range (skilodge 8090, qwenmax-lodge 3000)."""
+    lo, hi = port_range()
+    existing = servers.get(name) or {}
+    if requested is not None and requested == existing.get("port"):
+        return requested  # same server, same port — stability across restarts
+    taken = {e.get("port"): n for n, e in servers.items()
+             if n != name and e.get("port")}
+    if requested is not None:
+        if not (lo <= requested <= hi):
+            raise PortAllocationError(
+                f"port {requested} is outside Odysseus's server port range "
+                f"{lo}-{hi}. Omit 'port' and one is assigned to you "
+                f"automatically — your app reads it from the PORT env var.")
+        if requested in taken:
+            other = servers.get(taken[requested]) or {}
+            other_job = _load().get(other.get("job_id", "")) or {}
+            state = "still running" if other_job.get("status") == "running" else "stopped"
+            raise PortAllocationError(
+                f"port {requested} belongs to your server '{taken[requested]}' "
+                f"({state}). Restart that server to apply code edits, stop it, "
+                f"or omit 'port' for a fresh assignment.")
+        if _port_listening(requested):
+            raise PortAllocationError(
+                f"port {requested} is busy (something outside the registry is "
+                f"listening). Omit 'port' and you are assigned a free one — "
+                f"your app reads it from the PORT env var.")
+        return requested
+    for p in range(lo, hi + 1):
+        if p in taken:
+            continue
+        if existing.get("port") == p or not _port_listening(p):
+            return p
+    raise PortAllocationError(
+        f"all ports in {lo}-{hi} are in use. Stop or remove servers you no "
+        f"longer need (action 'list' shows them, 'remove' deletes one).")
+
 
 def _load_servers() -> Dict[str, Dict[str, Any]]:
     try:
@@ -308,15 +382,28 @@ def _save_servers(servers: Dict[str, Dict[str, Any]]) -> None:
 
 
 def server_start(name: str, command: str, session_id: str,
-                 cwd: Optional[str] = None, port: Optional[int] = None) -> Dict[str, Any]:
-    """Start (or replace) the named server, detached and unreaped."""
+                 cwd: Optional[str] = None, port: Optional[int] = None,
+                 owner: Optional[str] = None,
+                 autostart: Optional[bool] = None) -> Dict[str, Any]:
+    """Start (or replace) the named server, detached and unreaped.
+
+    The port is ASSIGNED (doc 017): allocated from the reserved range unless
+    the caller names a valid free one, injected into the process as PORT.
+    Owner/autostart are sticky — a replace without them keeps the old values.
+    Raises PortAllocationError with a teaching message on any port problem.
+    """
     servers = _load_servers()
     old = servers.get(name)
+    assigned = _allocate_port(servers, name, port if port else (old or {}).get("port"))
     if old and old.get("job_id"):
         kill(old["job_id"])   # replacing an existing instance is deliberate
-    rec = launch(command, session_id, cwd=cwd, max_runtime_s=SERVER_MAX_RUNTIME_S)
+    rec = launch(command, session_id, cwd=cwd, max_runtime_s=SERVER_MAX_RUNTIME_S,
+                 env={"PORT": str(assigned)})
     servers[name] = {"job_id": rec["id"], "command": command, "cwd": cwd,
-                     "port": port, "session_id": session_id,
+                     "port": assigned, "session_id": session_id,
+                     "owner": owner if owner is not None else (old or {}).get("owner"),
+                     "autostart": autostart if autostart is not None
+                     else bool((old or {}).get("autostart")),
                      "started_at": rec["started_at"]}
     _save_servers(servers)
     return server_status(name)
@@ -339,7 +426,67 @@ def server_restart(name: str) -> Optional[Dict[str, Any]]:
     if not entry:
         return None
     return server_start(name, entry["command"], entry.get("session_id", ""),
-                        cwd=entry.get("cwd"), port=entry.get("port"))
+                        cwd=entry.get("cwd"), port=entry.get("port"),
+                        owner=entry.get("owner"),
+                        autostart=entry.get("autostart"))
+
+
+def server_assign(name: str, session_id: str) -> Optional[Dict[str, Any]]:
+    """Re-attach a server to another chat (doc 017: capability follows the
+    owner, attachment follows the session — and moving it is always explicit,
+    never a side effect of touching it from elsewhere)."""
+    servers = _load_servers()
+    entry = servers.get(name)
+    if not entry:
+        return None
+    entry["session_id"] = session_id
+    _save_servers(servers)
+    return server_status(name)
+
+
+def server_remove(name: str) -> Optional[Dict[str, Any]]:
+    """Delete the registry entry (killing the process first if running).
+    `stop` deliberately keeps the entry restartable; this is the actual
+    delete the registry never had — dead entries otherwise live forever."""
+    servers = _load_servers()
+    entry = servers.pop(name, None)
+    if entry is None:
+        return None
+    if entry.get("job_id"):
+        kill(entry["job_id"])
+    _save_servers(servers)
+    entry["removed"] = True
+    return entry
+
+
+def reconcile_autostart() -> List[str]:
+    """Boot-time self-heal (doc-015 pattern): relaunch every autostart-flagged
+    server that is not running. Called from app startup — retires the deploy
+    script's hand-written skilodge relaunch. The relaunched JOB is owned by
+    SYSTEM_OWNER (no chat follow-up on its eventual exit); the entry keeps its
+    chat attachment for panel attribution."""
+    revived = []
+    for name, entry in _load_servers().items():
+        if not entry.get("autostart") or entry.get("stopped"):
+            continue
+        job = get(entry.get("job_id", "")) or {}
+        if job.get("status") == "running":
+            continue
+        try:
+            saved_session = entry.get("session_id", "")
+            server_start(name, entry["command"], SYSTEM_OWNER,
+                         cwd=entry.get("cwd"), port=entry.get("port"),
+                         owner=entry.get("owner"),
+                         autostart=True)
+            # server_start stamped the entry with the SYSTEM job session;
+            # restore the chat attachment (it belongs to the panel, not the job).
+            if saved_session and saved_session != SYSTEM_OWNER:
+                server_assign(name, saved_session)
+            revived.append(name)
+        except Exception:
+            # One broken server must not block the rest of boot reconciliation.
+            continue
+    return revived
 
 
 def _port_listening(port: Optional[int]) -> Optional[bool]:
@@ -372,6 +519,10 @@ def server_status(name: str) -> Optional[Dict[str, Any]]:
         if job.get("status") == "running" else None,
         "job_id": entry.get("job_id"),
         "exit_code": job.get("exit_code"),
+        "owner": entry.get("owner"),
+        "session_id": entry.get("session_id"),
+        "autostart": bool(entry.get("autostart")),
+        "stopped": bool(entry.get("stopped")),
     }
 
 

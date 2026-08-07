@@ -1053,6 +1053,18 @@ async def _startup_event():
         _startup_tasks.append(start_bg_monitor())
     except Exception as _e:
         logger.warning("Failed to start background-job monitor: %s", _e)
+    # Doc 017: revive autostart-flagged named servers (same self-heal idea as
+    # the toolchain tier above — a container swap must not kill the user's
+    # servers). Thread, not inline: allocation probes ports with 2s timeouts.
+    def _revive_servers():
+        try:
+            from src import bg_jobs
+            revived = bg_jobs.reconcile_autostart()
+            if revived:
+                logger.info("[servers] autostart revived: %s", ", ".join(revived))
+        except Exception as _e:
+            logger.warning("Server autostart reconcile failed (non-critical): %s", _e)
+    _startup_tasks.append(asyncio.create_task(asyncio.to_thread(_revive_servers)))
     # MCP servers can be slow or blocked by local tooling. Connect them after
     # the web server is accepting traffic instead of delaying the whole UI.
     async def _startup_mcp_connections():
