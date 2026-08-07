@@ -133,6 +133,20 @@ Prefer tests that exercise real behavior over tests that inspect source code.
 - Do not convert source-text assertions to behavioral ones in the *same* PR that
   moves files or changes unrelated setup.
 
+## Windows dev machines (advisory-only suite)
+
+The AUTHORITATIVE suite run is inside the built image — deploy step 3b in
+doc 007 (`scripts/deploy-with-gate.sh`); no green there, no swap. The
+Windows dev run is advisory: ~130 tests fail on environment, not behavior
+(measured 2026-08-07; all pass in-image).
+
+- Set `PYTHONUTF8=1` before running locally — clears the entire encoding
+  family (~28 failures: bare `read_text()` source-scanners meeting cp1252).
+- The remainder is POSIX-only by nature (path confinement, executable-bit
+  checks, node-bridge and hardware-detection tests). Do not "fix" them for
+  Windows and do not chase them — read the in-image verdict instead.
+- New tests that read repo files must pass `encoding="utf-8"` explicitly.
+
 ## Helper & factory extraction rules
 
 - Extract a shared helper only when the duplicated shape is **proven** - the same

@@ -72,9 +72,12 @@ def _fake_bg(monkeypatch, tmp_path):
     servers_file = tmp_path / "servers.json"
     monkeypatch.setattr(bj, "_SERVERS_FILE", servers_file)
     launched = []
+    port_envs = []
+    listening = set()
 
-    def fake_launch(command, session_id, cwd=None, max_runtime_s=0):
+    def fake_launch(command, session_id, cwd=None, max_runtime_s=0, env=None):
         launched.append(command)
+        port_envs.append((env or {}).get("PORT"))
         return {"id": f"job{len(launched)}", "started_at": 1750000000.0}
 
     fake_jobs = {}
@@ -85,8 +88,8 @@ def _fake_bg(monkeypatch, tmp_path):
     monkeypatch.setattr(bj, "launch", fake_launch)
     monkeypatch.setattr(bj, "get", fake_get)
     monkeypatch.setattr(bj, "kill", lambda job_id: fake_jobs.setdefault(job_id, {}).update(status="failed") or fake_jobs[job_id])
-    monkeypatch.setattr(bj, "_port_listening", lambda port: True if port else None)
-    return launched
+    monkeypatch.setattr(bj, "_port_listening", lambda port: port in listening)
+    return launched, port_envs, listening
 
 
 def _run(tool, payload):
@@ -94,26 +97,41 @@ def _run(tool, payload):
 
 
 def test_start_status_restart_stop_cycle(monkeypatch, tmp_path):
-    launched = _fake_bg(monkeypatch, tmp_path)
+    launched, port_envs, listening = _fake_bg(monkeypatch, tmp_path)
     tool = ManageServerTool()
 
+    # Doc 017 contract: no port in the call — one is ASSIGNED from the
+    # reserved range and exported to the process as PORT.
     r = _run(tool, {"action": "start", "name": "lodge", "command": "python app.py",
-                    "cwd": "/app/data/skilodge", "port": 8091})
+                    "cwd": "/app/data/skilodge"})
     assert r["exit_code"] == 0 and "RUNNING" in r["output"]
+    assert port_envs[0] == "13000"
 
+    listening.add(13000)   # the app came up on its assigned port
     r = _run(tool, {"action": "status", "name": "lodge"})
-    assert "port 8091 listening" in r["output"]
+    assert "port 13000 listening" in r["output"]
 
     r = _run(tool, {"action": "restart", "name": "lodge"})
     assert "code edits are now live" in r["output"]
     assert len(launched) == 2                 # restart relaunched same spec
     assert launched[0] == launched[1] == "python app.py"
+    assert port_envs[1] == "13000"            # restart keeps the assigned port
 
     r = _run(tool, {"action": "logs", "name": "lodge"})
     assert "serving on 8090" in r["output"]
 
     r = _run(tool, {"action": "stop", "name": "lodge"})
     assert r["exit_code"] == 0
+
+
+def test_fresh_start_with_out_of_range_port_teaches(monkeypatch, tmp_path):
+    # Doc 017: models must not pick ports; a fresh start naming one outside
+    # the range is refused with the PORT-env teaching, not honored.
+    _fake_bg(monkeypatch, tmp_path)
+    r = _run(ManageServerTool(), {"action": "start", "name": "lodge",
+                                  "command": "python app.py", "port": 8091})
+    assert r["exit_code"] == 1
+    assert "PORT env var" in r["error"]
 
 
 def test_pid_alive_eperm_means_alive(monkeypatch):
