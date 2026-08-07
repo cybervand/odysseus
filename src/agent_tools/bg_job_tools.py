@@ -152,6 +152,15 @@ class ManageServerTool:
         if action in ("help", "?", "usage", "actions"):
             return {"output": _SERVER_HELP, "exit_code": 0}
 
+        # Validate the ACTION before anything server-specific: a wrong verb
+        # on a nonexistent name must teach the verbs, not claim the server
+        # is unknown (that error taught the wrong lesson).
+        _known = {"start", "stop", "restart", "status", "logs", "list",
+                  "query", "adopt", "remove"}
+        if action not in _known:
+            return {"error": f"manage_server: unknown action '{action}'.\n{_SERVER_HELP}",
+                    "exit_code": 1}
+
         if action == "list":
             servers = [s for s in bg_jobs.server_list() if _mine(s)]
             lo, hi = bg_jobs.port_range()
