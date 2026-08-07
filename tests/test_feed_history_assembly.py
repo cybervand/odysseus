@@ -38,11 +38,14 @@ def test_gemma_done_run_keeps_its_thinking():
     runs = assemble_history(events)
     assert len(runs) == 1
     run = runs[0]
-    assert len(run["round_texts"]) == 1
+    # True chronology (2026-08-07 interleave fix): the thinking round closes
+    # when its tool runs; "Done." arrived AFTER the tool and renders below
+    # the card, not above it.
+    assert len(run["round_texts"]) == 2
     text = run["round_texts"][0]
     assert text.startswith("<think>")
     assert "Plan: templates first." in text
-    assert text.endswith("Done.")
+    assert run["round_texts"][1] == "Done."
     assert run["tool_events"] == [{
         "tool": "write_file", "round": 1, "status": "ok",
         "command": "skilodge/data.json", "exit_code": 0,
@@ -61,9 +64,12 @@ def test_multi_round_attribution():
     ]
     runs = assemble_history(events)
     (run,) = runs
-    assert len(run["round_texts"]) == 2
+    # True chronology: round 2's thinking closes when its bash runs; the
+    # post-tool reply is its own round 3 and renders below the card.
+    assert len(run["round_texts"]) == 3
     assert "first thing" in run["round_texts"][0]
     assert "second thing" in run["round_texts"][1]
+    assert "second failed" in run["round_texts"][2]
     # the bash ran after round 1 closed -> round 2
     assert run["tool_events"][0]["round"] == 2
     assert run["tool_events"][0]["status"] == "error"
@@ -81,8 +87,11 @@ def test_two_user_turns_two_runs():
     runs = assemble_history(events)
     assert len(runs) == 2
     assert runs[0]["round_texts"] == ["answer one"]
-    assert runs[1]["round_texts"] == ["answer two"]
+    # Tool-before-any-text holds slot 1 empty so "answer two" renders BELOW
+    # the card (true order), and the renderer skips the empty slot.
+    assert runs[1]["round_texts"] == ["", "answer two"]
     assert runs[1]["tool_events"][0]["tool"] == "bash"
+    assert runs[1]["tool_events"][0]["round"] == 1
 
 
 def test_plain_chat_turn_yields_none_slot():

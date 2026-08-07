@@ -358,7 +358,20 @@ def assemble_history(events):
                     info = {"tool": p}
             else:
                 info = {"tool": p}
-            round_num = len(cur["round_texts"]) + 1
+            # A tool ending means the current text belongs to THIS round —
+            # close it now. Without this, rounds only closed on
+            # thinking-after-reply, so text-tool-text-tool runs concatenated
+            # every reply into ONE block and attributed every tool to round
+            # 1: the renderer drew one compressed bubble plus a monolithic
+            # card column ("messages between tool calls squashed to top or
+            # bottom", 2026-08-07).
+            if cur["_reply"] or cur["_thinking"]:
+                _close_round(cur)
+            elif not cur["round_texts"] and not cur["tool_events"]:
+                # Tools before any text: hold slot 1 so later text lands in
+                # slot 2 and renders BELOW this thread, not above it.
+                cur["round_texts"].append("")
+            round_num = max(1, len(cur["round_texts"]))
             tev = {"tool": info.get("tool", "?"), "round": round_num,
                    "status": info.get("status", "ok")}
             if info.get("command"):
