@@ -128,6 +128,10 @@ class EditFileTool:
         diff = _unified_diff(original, updated, path)
         if diff:
             result["diff"] = diff
+        from src.agent_tools.write_checks import check_written_file
+        _note = await asyncio.to_thread(check_written_file, path)
+        if _note:
+            result["output"] += "\n" + _note
         return result
 
 class ReadFileTool:
@@ -257,6 +261,14 @@ class WriteFileTool:
         result = {"output": f"Wrote {size} bytes to {path}", "exit_code": 0}
         if diff:
             result["diff"] = diff
+        # Write-time health check (2026-08-08): syntax + image references,
+        # advisory. Both daily drivers shipped sites with broken images —
+        # fabricated remote URLs and error pages saved as .jpg — and the only
+        # teaching moment that works is the tool result itself.
+        from src.agent_tools.write_checks import check_written_file
+        _note = await asyncio.to_thread(check_written_file, path)
+        if _note:
+            result["output"] += "\n" + _note
         return result
 
 class ApplyPatchTool:
@@ -310,6 +322,7 @@ class ApplyPatchTool:
                 prepared.append((kind, path, old, new))
 
             diffs = []
+            _written_paths = []
             for kind, path, old, new in prepared:
                 if kind == "delete":
                     os.remove(path)
@@ -319,6 +332,7 @@ class ApplyPatchTool:
                         os.makedirs(directory, exist_ok=True)
                     with open(path, "w", encoding="utf-8") as f:
                         f.write(new)
+                    _written_paths.append(path)
                 diff = _unified_diff(old, new, path)
                 if diff:
                     diffs.append(diff)
@@ -343,6 +357,11 @@ class ApplyPatchTool:
                 "new_file": any(d.get("new_file") for d in diffs),
                 "file": "patch",
             }
+        from src.agent_tools.write_checks import check_written_file
+        for _p in _written_paths[:3]:
+            _note = await asyncio.to_thread(check_written_file, _p)
+            if _note:
+                result["output"] += f"\n[{_p}] " + _note
         return result
 
 def _parse_agent_patch(patch_text: str) -> List[Dict[str, Any]]:
