@@ -4479,6 +4479,7 @@ async def stream_agent_loop(
     # lets a legit batch (e.g. 18 calendar events at once) through.
     _call_freq: collections.Counter = collections.Counter()
     _force_answer = False  # set by loop-breaker → next round runs with NO tools
+    _graceful_verifier_abort = False  # verifier follow-up died AFTER a real answer
     # Supervisor: how many times we've nudged the model after it announced
     # an action without emitting the tool call. Capped to prevent a model
     # that *can't* call the tool from looping forever.
@@ -4666,6 +4667,28 @@ async def stream_agent_loop(
                     time.time() - _round_start,
                     chunk[:500],
                 )
+                if _verifier_fix_pending and full_response.strip():
+                    # The user already HAS a real answer — this is the
+                    # verifier's follow-up dying, not the answer failing. A
+                    # raw "Error 502" bubble after a delivered answer reads
+                    # as the whole turn failing (observed 2026-08-07:
+                    # qwen returned empty on a pushback round; the user saw
+                    # 502 under a finished message). Degrade to a note and
+                    # finish the run cleanly with everything saved.
+                    logger.info(
+                        "[agent] verifier follow-up stream error after a "
+                        "delivered answer — closing gracefully instead of "
+                        "surfacing the error frame"
+                    )
+                    _note = (
+                        "\n\n*Follow-up fixes could not finish — the model "
+                        "stopped responding. Work so far is saved; say "
+                        "\"finish the remaining items\" to continue.*\n"
+                    )
+                    yield f'data: {json.dumps({"delta": _note})}\n\n'
+                    full_response += _note
+                    _graceful_verifier_abort = True
+                    break
                 yield chunk
                 continue
             if chunk.startswith("data: ") and not chunk.startswith("data: [DONE]"):
@@ -4853,6 +4876,8 @@ async def stream_agent_loop(
             _round_first_event_logged,
             _round_first_token_logged,
         )
+        if _graceful_verifier_abort:
+            break  # answer delivered; follow-up died — finalize cleanly
         _normalized_doc_round = (
             _normalize_stream_document_fences(
                 round_response,
