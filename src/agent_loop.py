@@ -5212,13 +5212,24 @@ async def stream_agent_loop(
                     # ("content not shown") and forces a costly extra round every
                     # effectful turn. Opt-in via setting for strong models.
                     and get_setting("agent_verifier_subagent", False)):
-                # Brief "working" indicator while the verifier runs.
+                # Visible "verifying" indicator while the verifier runs —
+                # the check takes real seconds on a local 30B model, and a
+                # dead-silent RUNNING pill after a finished-looking answer
+                # read as a hang (user request, 2026-08-07). The pass/fail
+                # continuation is appended to this same line.
                 yield f'data: {json.dumps({"type": "agent_step", "round": round_num})}\n\n'
+                _vopen = "\n\n*Double-checking the work…*"
+                yield f'data: {json.dumps({"delta": _vopen})}\n\n'
+                full_response += _vopen
                 _vfail = await _run_verifier_subagent(
                     _verifier_instruction,
                     _build_actions_snapshot(tool_events),
                     endpoint_url=endpoint_url, model=model, headers=headers,
                 )
+                if not _vfail:
+                    _vok = " *Looks complete.*"
+                    yield f'data: {json.dumps({"delta": _vok})}\n\n'
+                    full_response += _vok
                 if _vfail:
                     _verifier_rounds += 1
                     logger.info(f"[agent] verifier flagged {len(_vfail)} issue(s) on round {round_num}: {_vfail}")
@@ -5229,7 +5240,7 @@ async def stream_agent_loop(
                     # *asterisk* emphasis — the only form the chat renderer
                     # supports (underscore emphasis renders literally).
                     _note = (
-                        "\n\n*Double-checked the work — sent back to fix:*\n"
+                        " *Found unfinished items — sending back to fix:*\n"
                         + "".join(f"- {i}\n" for i in _vfail[:6]) + "\n"
                     )
                     yield f'data: {json.dumps({"delta": _note})}\n\n'
