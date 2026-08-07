@@ -47,7 +47,11 @@ echo "=== 4. preflight: stream activity in last 300s?"
 # the swap guillotined an active session. Match the CURRENT log families
 # and use a wide window (a single slow round or tool call can be quiet
 # for >90s). When touching agent_loop log formats, update this too.
-ACT=$(docker logs --since 300s odysseus 2>&1 | grep -cE 'agent-timing|agent-debug|Tool started|Tool executed|chat_stream|bg-followup' || true)
+# 'POST /api/chat_stream' exactly — a bare 'chat_stream' also matches the
+# browser's idle GET /api/chat/stream_status poll (~2.5s cadence = a
+# guaranteed 120 lines/300s), which blocked deploys while a tab was
+# merely open (two false blocks, 2026-08-07).
+ACT=$(docker logs --since 300s odysseus 2>&1 | grep -cE 'agent-timing|agent-debug|Tool started|Tool executed|POST /api/chat_stream|bg-followup' || true)
 if [ "$ACT" -gt 0 ]; then
   echo "DEPLOY-BLOCKED: $ACT active-stream log lines in last 300s"
   exit 1
