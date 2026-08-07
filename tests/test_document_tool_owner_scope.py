@@ -27,6 +27,7 @@ class _Document:
     id = _Column("id")
     owner = _Column("owner")
     is_active = _Column("is_active")
+    archived = _Column("archived")
     title = _Column("title")
     language = _Column("language")
     updated_at = _Column("updated_at")

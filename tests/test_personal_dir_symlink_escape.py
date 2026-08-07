@@ -10,12 +10,15 @@ _resolve_allowed_personal_dir is a closure inside setup_personal_routes, so the
 source-level test pins the fix and the behavioural test proves the underlying
 confinement principle.
 """
+import pytest
 import ast
 import os
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent / "routes" / "personal_routes.py"
 
+
+pytestmark = pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 
 def _function_source(src_text, name):
     tree = ast.parse(src_text)

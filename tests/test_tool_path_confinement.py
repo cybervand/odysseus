@@ -20,6 +20,8 @@ from unittest.mock import patch
 import pytest
 
 
+pytestmark = pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
+
 def _make_block(tool_type, content):
     return SimpleNamespace(tool_type=tool_type, content=content)
 

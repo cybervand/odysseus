@@ -30,6 +30,8 @@ import src.ai_interaction as ai
 # --------------------------------------------------------------------------- #
 
 
+pytestmark = pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
+
 class _FakeCollection:
     def __init__(self, rows):
         self._ids = [r[0] for r in rows]

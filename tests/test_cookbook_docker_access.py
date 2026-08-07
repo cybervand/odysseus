@@ -57,6 +57,7 @@ async def test_container_cli_only_is_rejected(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 async def test_container_opt_in_with_unix_socket_is_allowed(monkeypatch, tmp_path):
     monkeypatch.setattr(cookbook_routes.shutil, "which", lambda binary: "/usr/bin/docker")
     socket_path = tmp_path / "docker.sock"
@@ -171,6 +172,7 @@ async def test_local_container_serve_returns_host_docker_opt_in_hint(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 async def test_local_container_serve_allows_generated_docker_exec_when_enabled(
     monkeypatch,
     tmp_path,

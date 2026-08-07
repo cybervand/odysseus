@@ -430,6 +430,7 @@ def test_rename_no_memory_json_does_not_crash(rename_endpoint):
 # 4. uploads.json
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 def test_rename_updates_upload_metadata_owner(rename_endpoint):
     endpoint, _am, tmp_path = rename_endpoint
     from src.upload_handler import UploadHandler

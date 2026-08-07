@@ -10,6 +10,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite:////tmp/test_code_nav.db")
 from src.tool_execution import _direct_fallback
 
 
+pytestmark = pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
+
 def _run(tool, content):
     return asyncio.run(_direct_fallback(tool, content))
 

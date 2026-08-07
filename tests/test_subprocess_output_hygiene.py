@@ -15,6 +15,8 @@ from src.agent_loop import _build_actions_snapshot
 from src.agent_tools.subprocess_tools import _strip_ansi, BashTool
 
 
+pytestmark = pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
+
 def test_strip_ansi_removes_csi_and_osc():
     raw = "\x1b[1m@eslint/create-config: v2.0.0\x1b[22m\n\x1b[?25l\x1b[36m?\x1b[39m What do you want to lint?\x1b[6A\x1b[32G\x1b[?25h"
     clean = _strip_ansi(raw)

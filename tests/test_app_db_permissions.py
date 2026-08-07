@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 
+pytestmark = pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="POSIX mode bits (0o600) don't exist on Windows; safe_chmod no-ops there.",

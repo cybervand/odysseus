@@ -220,6 +220,7 @@ class _FakeExecutor:
         return self.returncode
 
 
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 def test_dry_run_prints_command_and_does_not_execute(capsys):
     executor = _FakeExecutor()
     code = run(
@@ -235,6 +236,7 @@ def test_dry_run_prints_command_and_does_not_execute(capsys):
     )
 
 
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 def test_dry_run_last_failed_prints_safe_flags(capsys):
     executor = _FakeExecutor()
     code = run(["--dry-run", "--last-failed"], executor=executor)
@@ -346,6 +348,7 @@ def test_fast_with_durations_run_invokes_executor():
     ]]
 
 
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 def test_fast_durations_dry_run_prints_command(capsys):
     executor = _FakeExecutor()
     code = run(["--dry-run", "--fast", "--durations", "25"], executor=executor)
@@ -420,6 +423,7 @@ _SLOW_AUTH_CONCURRENCY_TESTS = (
 )
 
 
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 def test_fast_lane_collects_only_unmarked_auth_concurrency_test():
     """`--fast` collection drops the marked slow tests but keeps the fast one.
 

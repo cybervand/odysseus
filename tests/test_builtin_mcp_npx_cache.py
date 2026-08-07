@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 import importlib.util
 from pathlib import Path
@@ -96,6 +97,7 @@ def test_browser_mcp_args_can_keep_sandbox(monkeypatch):
     assert "--no-sandbox" not in args
 
 
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 def test_npx_cache_check_detects_scoped_package_in_npx_cache(monkeypatch, tmp_path):
     builtin_mcp = _load_builtin_mcp(monkeypatch)
     package_json = (

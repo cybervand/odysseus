@@ -1,6 +1,8 @@
+import pytest
 from tests.helpers.cli_loader import load_script
 
 
+@pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 def test_is_runnable_subcommand_requires_executable_file(tmp_path):
     cli = load_script("odysseus")
     sub = tmp_path / "odysseus-demo"

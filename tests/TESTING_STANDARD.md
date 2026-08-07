@@ -137,15 +137,20 @@ Prefer tests that exercise real behavior over tests that inspect source code.
 
 The AUTHORITATIVE suite run is inside the built image — deploy step 3b in
 doc 007 (`scripts/deploy-with-gate.sh`); no green there, no swap. The
-Windows dev run is advisory: ~130 tests fail on environment, not behavior
-(measured 2026-08-07; all pass in-image).
+Windows dev run is advisory but expected GREEN (2026-08-07 cleanup: 134
+environment failures → 0, ~50 POSIX-only tests now carry labeled skips).
+Keep it that way:
 
-- Set `PYTHONUTF8=1` before running locally — clears the entire encoding
-  family (~28 failures: bare `read_text()` source-scanners meeting cp1252).
-- The remainder is POSIX-only by nature (path confinement, executable-bit
-  checks, node-bridge and hardware-detection tests). Do not "fix" them for
-  Windows and do not chase them — read the in-image verdict instead.
+- Run with `PYTHONUTF8=1` (bare `read_text()` source-scanners die on
+  cp1252 otherwise; it is Python's default from 3.15).
 - New tests that read repo files must pass `encoding="utf-8"` explicitly.
+- Node ESM imports in `_js` tests must use `Path.as_uri()`, never
+  `as_posix()` — Windows node only accepts `file://` URLs.
+- POSIX-only tests (path confinement, symlinks, AF_UNIX, executable bits,
+  hardware probes) get
+  `pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative
+  run is in-image (doc 007 step 3b)")` — never a Windows port of the
+  product code, and never an unlabeled skip.
 
 ## Helper & factory extraction rules
 

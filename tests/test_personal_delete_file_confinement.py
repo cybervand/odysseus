@@ -1,9 +1,12 @@
+import pytest
 import asyncio
 import os
 from pathlib import Path
 
 from routes import personal_routes
 
+
+pytestmark = pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 
 class _FakePersonalDocs:
     def __init__(self):
