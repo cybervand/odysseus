@@ -203,3 +203,32 @@ def test_reconcile_skips_deliberately_stopped(store):
     bg_jobs.server_start("auto", "python app.py", "sess-a", autostart=True)
     bg_jobs.server_stop("auto")
     assert bg_jobs.reconcile_autostart() == []
+
+
+# ── Agent-loop manifest (doc 017 §3) ────────────────────────────────────────
+
+def test_manifest_builds_with_public_host(store, monkeypatch):
+    # Regression: the manifest's os.environ read NameError'd EVERY agent run
+    # once servers existed (agent_loop had no `import os`; 2026-08-07, hit
+    # production because no test registered servers and built the manifest).
+    from src.agent_loop import _named_server_context_message
+    monkeypatch.setenv("ODYSSEUS_PUBLIC_HOST", "192.168.1.192")
+    bg_jobs.server_start("mine", "python app.py", "sess-a", owner="alice")
+    servers = bg_jobs.server_list()
+    msg = _named_server_context_message(servers, [])
+    text = msg["content"]
+    assert "url=http://192.168.1.192:13000" in text
+    assert "localhost is wrong" in text
+
+
+def test_manifest_two_sections_and_adopt_hint(store, monkeypatch):
+    monkeypatch.delenv("ODYSSEUS_PUBLIC_HOST", raising=False)
+    from src.agent_loop import _named_server_context_message
+    bg_jobs.server_start("here", "python app.py", "sess-a")
+    bg_jobs.server_start("there", "python app.py", "sess-b")
+    servers = {s["name"]: s for s in bg_jobs.server_list()}
+    msg = _named_server_context_message([servers["here"]], [servers["there"]])
+    text = msg["content"]
+    assert "THIS chat" in text
+    assert "OTHER chats" in text
+    assert "adopt" in text
