@@ -4479,7 +4479,9 @@ async def stream_agent_loop(
     # lets a legit batch (e.g. 18 calendar events at once) through.
     _call_freq: collections.Counter = collections.Counter()
     _force_answer = False  # set by loop-breaker → next round runs with NO tools
-    _graceful_verifier_abort = False  # verifier follow-up died AFTER a real answer
+    _graceful_stream_abort = False  # stream died AFTER substantive work — close politely
+    _stream_error_retry_used = False  # one free retry for a mid-run empty/error round
+    _round_error_retry = False
     # Supervisor: how many times we've nudged the model after it announced
     # an action without emitting the tool call. Capped to prevent a model
     # that *can't* call the tool from looping forever.
@@ -4667,27 +4669,31 @@ async def stream_agent_loop(
                     time.time() - _round_start,
                     chunk[:500],
                 )
-                if _verifier_fix_pending and full_response.strip():
-                    # The user already HAS a real answer — this is the
-                    # verifier's follow-up dying, not the answer failing. A
-                    # raw "Error 502" bubble after a delivered answer reads
-                    # as the whole turn failing (observed 2026-08-07:
-                    # qwen returned empty on a pushback round; the user saw
-                    # 502 under a finished message). Degrade to a note and
-                    # finish the run cleanly with everything saved.
-                    logger.info(
-                        "[agent] verifier follow-up stream error after a "
-                        "delivered answer — closing gracefully instead of "
-                        "surfacing the error frame"
-                    )
+                if full_response.strip():
+                    # Substantive work already exists — a raw "Error 502"
+                    # bubble here reads as the whole turn failing (qwen
+                    # pushback round + gemma4 empty round 5, both
+                    # 2026-08-07). First give the model ONE retry with a
+                    # nudge (transient empties recover invisibly); if that
+                    # also dies, degrade to a saved-work note and finish
+                    # the run cleanly.
+                    if not _stream_error_retry_used:
+                        _stream_error_retry_used = True
+                        _round_error_retry = True
+                        logger.info("[agent] mid-run stream error with prior work — retrying the round once with a nudge")
+                        break
+                    logger.info("[agent] stream error persisted after retry — closing gracefully instead of surfacing the error frame")
                     _note = (
                         "\n\n*Follow-up fixes could not finish — the model "
                         "stopped responding. Work so far is saved; say "
                         "\"finish the remaining items\" to continue.*\n"
+                        if _verifier_fix_pending else
+                        "\n\n*The model stopped responding mid-task. Work so "
+                        "far is saved; say \"continue\" to pick up from here.*\n"
                     )
                     yield f'data: {json.dumps({"delta": _note})}\n\n'
                     full_response += _note
-                    _graceful_verifier_abort = True
+                    _graceful_stream_abort = True
                     break
                 yield chunk
                 continue
@@ -4876,8 +4882,20 @@ async def stream_agent_loop(
             _round_first_event_logged,
             _round_first_token_logged,
         )
-        if _graceful_verifier_abort:
-            break  # answer delivered; follow-up died — finalize cleanly
+        if _round_error_retry:
+            _round_error_retry = False
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Your previous reply came back empty. Continue the task "
+                    "from where you stopped — take the next single concrete "
+                    "step now."
+                ),
+            })
+            yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+            continue
+        if _graceful_stream_abort:
+            break  # substantive work delivered; stream died — finalize cleanly
         _normalized_doc_round = (
             _normalize_stream_document_fences(
                 round_response,
