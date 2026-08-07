@@ -151,6 +151,16 @@ def test_legacy_ownerless_entries_stay_reachable(store):
     assert "error" not in out
 
 
+def test_session_attachment_grants_access_despite_owner_gap(store):
+    # Regression (2026-08-07): the registry dispatch dropped ctx owner, and
+    # the tool told the chat its OWN server was unknown. Session attachment
+    # must be an independent grant.
+    bg_jobs.server_start("mine", "python app.py", "sess-a", owner="admin")
+    out = _tool({"action": "status", "name": "mine"}, session_id="sess-a", owner=None)
+    assert "error" not in out
+    assert "mine" in out["output"]
+
+
 def test_adopt_moves_attachment_not_capability(store):
     bg_jobs.server_start("mine", "python app.py", "sess-old", owner="alice")
     out = _tool({"action": "adopt", "name": "mine"},

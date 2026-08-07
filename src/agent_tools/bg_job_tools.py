@@ -85,7 +85,14 @@ class ManageServerTool:
             # Capability follows the OWNER (doc 017): any of the user's chats
             # may manage the user's servers. Legacy owner-less entries stay
             # reachable; other users' servers are invisible, not "denied".
-            return st is not None and st.get("owner") in (None, owner)
+            # Session attachment is an independent grant: THIS chat's server
+            # is always manageable — belt against ctx-owner plumbing gaps
+            # (the registry dispatch dropped owner/session until 2026-08-07
+            # and the tool called the chat's own server "unknown").
+            return st is not None and (
+                st.get("owner") in (None, owner)
+                or (bool(session_id) and st.get("session_id") == session_id)
+            )
 
         def _fmt(st):
             if st is None:
