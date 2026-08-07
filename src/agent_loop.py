@@ -1160,6 +1160,49 @@ def _session_library_context_message(docs: List[Dict], library_docs: Optional[Li
     return untrusted_context_message("session document library", "\n".join(lines))
 
 
+def _named_server_context_message(here: List[Dict], elsewhere: List[Dict]) -> Optional[Dict]:
+    """Doc 017 §3: the doc-003 lesson applied to servers. A model that
+    started a server three turns ago forgets it exists, starts a duplicate
+    on a new port, refuses to edit "someone else's" code, or resigns on
+    "my port is taken". Two sections like the library manifest: this chat's
+    servers in full detail, the owner's others with the adopt hint. The
+    wording is agency — ownership stated outright, every state paired with
+    its next action.
+    """
+    if not here and not elsewhere:
+        return None
+
+    def _fmt(s):
+        state = "running" if s.get("running") else "stopped"
+        if s.get("running") and not s.get("port_listening"):
+            state = "running but NOT listening on its assigned port"
+        bits = [f"name={s.get('name')}", f"port={s.get('port')}", state]
+        if s.get("cwd"):
+            bits.append(f"code={s.get('cwd')}")
+        return "- " + "; ".join(bits)
+
+    lines = []
+    if here:
+        lines.append("Your servers in THIS chat (you started these — the code is yours to edit):")
+        lines.extend(_fmt(s) for s in here)
+    if elsewhere:
+        if lines:
+            lines.append("")
+        lines.append('Your servers from OTHER chats (manage_server action="adopt" attaches one here):')
+        lines.extend(_fmt(s) for s in elsewhere)
+    lines.extend([
+        "",
+        "These servers are YOURS. Edit the code in their folders freely; "
+        'manage_server action="restart" applies your edits (a running process '
+        "never sees file changes). Apps read their assigned port from the PORT "
+        "env var. If a port seems taken, it is almost always one of the servers "
+        'above — restart or stop it, do not pick a different port. action="query" '
+        "probes a server over HTTP without needing bash. Never claim these are "
+        "inaccessible or that you cannot edit or restart them.",
+    ])
+    return untrusted_context_message("named servers registry", "\n".join(lines))
+
+
 _WORKSPACE_CODE_ACTION_RE = re.compile(
     r"\b(?:fix|debug|implement|add|remove|change|update|refactor|wire|hook|"
     r"test|verify|run|build|lint|compile|commit|branch|merge|review|"
@@ -3532,6 +3575,27 @@ async def stream_agent_loop(
             f"{len(_library_docs)} from other chats"
         )
 
+    # Doc 017 §3: same again for named servers — two-section manifest with
+    # ownership stated outright (capability follows the owner, attachment
+    # follows the session).
+    _my_servers: List[Dict] = []
+    try:
+        from src import bg_jobs as _bg
+        _my_servers = [s for s in _bg.server_list()
+                       if s and s.get("owner") in (None, owner)]
+    except Exception as e:
+        logger.debug(f"[agent] server registry lookup failed: {e}")
+    if _my_servers:
+        _srv_here = [s for s in _my_servers if s.get("session_id") == session_id]
+        _srv_elsewhere = [s for s in _my_servers if s.get("session_id") != session_id]
+        _server_msg = _named_server_context_message(_srv_here, _srv_elsewhere)
+        if _server_msg:
+            messages = _insert_before_latest_user(messages, _server_msg)
+            logger.info(
+                f"[agent] server manifest injected: {len(_srv_here)} in this chat, "
+                f"{len(_srv_elsewhere)} elsewhere"
+            )
+
     # Doc 012 v2: turn-taking note for text-dialect models — FEW-SHOT form.
     # These families write the whole screenplay including the world's lines
     # (glm4 fabricated ls output before the real result arrived). v1's
@@ -3966,6 +4030,15 @@ async def stream_agent_loop(
             from src.tool_index import ALWAYS_AVAILABLE
             _relevant_tools = set(ALWAYS_AVAILABLE)
         _relevant_tools.update({"manage_documents", "edit_document"})
+
+    # Doc 017: same again for named servers — the manifest above says they
+    # exist; this keeps the tool that manages them reachable without
+    # keyword roulette.
+    if not guide_only and _my_servers:
+        if _relevant_tools is None:
+            from src.tool_index import ALWAYS_AVAILABLE
+            _relevant_tools = set(ALWAYS_AVAILABLE)
+        _relevant_tools.add("manage_server")
 
     # A message that names commands, package managers, or filesystem paths
     # needs the shell/file toolset — offer it regardless of what the intent

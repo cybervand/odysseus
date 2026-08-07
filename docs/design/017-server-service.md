@@ -1,6 +1,6 @@
 # 017 — Named servers as a service: port range, ownership, panel, query
 
-**Status:** Draft (approved direction 2026-08-07, user + Claude design session)
+**Status:** Shipped pending deployment (built 2026-08-07; see Decision log)
 
 ## Problem
 
@@ -101,11 +101,19 @@ per-user caps — this is a homelab; the range is the backstop.
   shortcut when the panel is opened inside a chat).
 - **`/server` slash-command family** (`slashCommands.js` registry, parent/
   sub style like `/chats`): `/servers` list, `/server
-  stop|restart|remove|adopt|logs|open|query <name>`. Runs frontend→API
-  with NO model in the loop — in the messed-up-chat scenario the user can
-  `/server adopt skilodge` even though the chat's model is confused.
-  Panel, slash commands, and the model tool are three doors over the same
-  owner-scoped authority. Honest badges: "registered but NOT listening" is shown
+  start|stop|restart|remove|adopt|logs|open <name>`. `start` on an
+  existing entry relaunches the stored command (the stopped-chip hint
+  lands there). Runs frontend→API with NO model in the loop — in the
+  messed-up-chat scenario the user can `/server adopt skilodge` even
+  though the chat's model is confused. Chips, slash commands, and the
+  model tool are three doors over the same owner-scoped authority.
+- **Persistent server chips** (`static/js/servers.js`, strip above the
+  chat input, 30s poll + focus refresh): OWNER-scoped, so a running
+  server stays visible and clickable after the user leaves the chat that
+  started it. Running → link chip (green dot; amber when the process is
+  up but nothing listens on the assigned port). Stopped → the chip stays,
+  greyed, and clicking it prefills "/server start <name>" into the input
+  — the stopped state teaches its own recovery path. Honest badges: "registered but NOT listening" is shown
   to the user, not just the model.
 
 ### 5. `query` verb (`bg_job_tools.py`)
@@ -174,3 +182,9 @@ returns 200, container restart revives it via autostart.
   follows session, reassignment always explicit.
 - 2026-08-07 — `/server` slash-command family added: user-driven access to
   the same verbs, model-free (works even when a chat's model is unusable).
+- 2026-08-07 — Persistent server chips added (user request): owner-scoped
+  strip above the chatbox; stopped chips teach /server start.
+- 2026-08-07 — BUILT (commits a74a1fcb core+tool+tests, bf7a4bca routes,
+  d292ed22 chips+slash, + agent-loop manifest): status → Shipped pending
+  deployment. Panel-as-modal deferred — chips + /server commands cover the
+  v1 need; revisit if the registry outgrows the strip.
