@@ -40,10 +40,16 @@ docker run --rm -v "$BUILD_DIR/tests:/srctests:ro" \
          python -m pytest tests/ -q --tb=line' \
   || { echo "GATE-FAILED: suite red inside ${IMAGE} — deploy aborted"; exit 1; }
 
-echo "=== 4. preflight: stream activity in last 90s?"
-ACT=$(docker logs --since 90s odysseus 2>&1 | grep -cE 'chat_stream|agent_step|\[agent\] round' || true)
+echo "=== 4. preflight: stream activity in last 300s?"
+# Pattern rot killed a user run (2026-08-07): the old grep matched
+# '[agent] round', but the loop now logs '[agent-debug] round=' and
+# '[agent-timing] …' — the guard went blind, declared quiet mid-run, and
+# the swap guillotined an active session. Match the CURRENT log families
+# and use a wide window (a single slow round or tool call can be quiet
+# for >90s). When touching agent_loop log formats, update this too.
+ACT=$(docker logs --since 300s odysseus 2>&1 | grep -cE 'agent-timing|agent-debug|Tool started|Tool executed|chat_stream|bg-followup' || true)
 if [ "$ACT" -gt 0 ]; then
-  echo "DEPLOY-BLOCKED: $ACT active-stream log lines in last 90s"
+  echo "DEPLOY-BLOCKED: $ACT active-stream log lines in last 300s"
   exit 1
 fi
 echo "quiet — proceeding"
