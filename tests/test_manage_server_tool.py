@@ -134,6 +134,21 @@ def test_start_status_restart_stop_cycle(monkeypatch, tmp_path):
     assert r["exit_code"] == 0
 
 
+def test_restart_with_new_command_replaces(monkeypatch, tmp_path):
+    # Gaslight regression (2026-08-07 campsite run): restart+command was
+    # silently ignored — the stored broken command relaunched and the model
+    # concluded the tool was broken.
+    launched, port_envs, listening = _fake_bg(monkeypatch, tmp_path)
+    tool = ManageServerTool()
+    _run(tool, {"action": "start", "name": "camp", "command": "python3 -m http.server 8000",
+                "cwd": "/app/data/camp"})
+    r = _run(tool, {"action": "restart", "name": "camp",
+                    "command": "python3 -m http.server $PORT"})
+    assert "NEW command" in r["output"]
+    assert launched[-1] == "python3 -m http.server $PORT"
+    assert port_envs[-1] == "13000"           # keeps the assigned port
+
+
 def test_fresh_start_with_out_of_range_port_teaches(monkeypatch, tmp_path):
     # Doc 017: models must not pick ports; a fresh start naming one outside
     # the range is refused with the PORT-env teaching, not honored.

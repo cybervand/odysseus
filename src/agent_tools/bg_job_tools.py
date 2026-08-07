@@ -128,10 +128,13 @@ class ManageServerTool:
             fresh = bg_jobs.server_status(st["name"]) or st
             if fresh.get("running") and not bg_jobs._port_listening(fresh.get("port")):
                 return (f"\nWARNING: nothing is listening on your assigned port "
-                        f"{fresh['port']} yet. Your app MUST bind that port — read "
-                        f"the PORT environment variable (it is set to {fresh['port']}) "
-                        f"or bind {fresh['port']} explicitly, then use action "
-                        f"'restart'. Do not pick a different port yourself.")
+                        f"{fresh['port']} yet. Your app MUST bind that port. "
+                        f"PORT={fresh['port']} is set in YOUR SERVER's environment "
+                        f"only (checking it from bash shows nothing — that is "
+                        f"expected). In app code read os.environ['PORT']; if the "
+                        f"program takes the port as an argument, write $PORT in "
+                        f"the command itself (e.g. 'python3 -m http.server $PORT') "
+                        f"and restart. Do not pick a different port yourself.")
             return ""
 
         if action == "list":
@@ -184,13 +187,26 @@ class ManageServerTool:
             return _unknown(name)
 
         if action == "restart":
+            # A restart carrying a NEW command is a re-register, not a
+            # relaunch — silently ignoring it gaslit a model into believing
+            # the tool was broken (2026-08-07 campsite run: it fixed its
+            # command via restart, the stored broken one ran again, and it
+            # fell back to foreground bash servers).
+            new_command = str(args.get("command") or "").strip()
             try:
-                st = await asyncio.to_thread(bg_jobs.server_restart, name)
+                if new_command:
+                    new_cwd = str(args.get("cwd") or "").strip() or (st.get("cwd") if st else None)
+                    st = await asyncio.to_thread(
+                        bg_jobs.server_start, name, new_command, session_id,
+                        cwd=new_cwd, owner=owner)
+                else:
+                    st = await asyncio.to_thread(bg_jobs.server_restart, name)
             except bg_jobs.PortAllocationError as e:
                 return {"error": f"manage_server: {e}", "exit_code": 1}
             note = await _truth_check(st)
             st = bg_jobs.server_status(name) or st
-            return {"output": "Restarted — code edits are now live.\n" + _fmt(st) + note,
+            verb = "Restarted with the NEW command." if new_command else "Restarted — code edits are now live."
+            return {"output": verb + "\n" + _fmt(st) + note,
                     "exit_code": 0}
 
         if action == "stop":
