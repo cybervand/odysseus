@@ -40,6 +40,11 @@ def test_guard_blocks_known_server_commands():
         "python /app/data/app.py",
         "python3 /srv/site/server.py",
         "node /app/data/qwenmax/skilodge/server.js",
+        # Dodge #3 (2026-08-07 campsite run): inline server CODE — no
+        # filename, no launcher pattern, still never returns.
+        'python3 -c "import http.server\nimport socketserver\n..."',
+        "python3 -c 'srv.serve_forever()'",
+        'node -e "require(\'http\').createServer(h).listen(port)"',
     ):
         g = _server_command_guard(cmd)
         assert g is not None, cmd

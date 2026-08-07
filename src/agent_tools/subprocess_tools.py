@@ -305,6 +305,15 @@ _SERVER_CMD_RE = re.compile(
     r"node (?:\S*/)?(?:server|app|index)\.js)\b"
 )
 
+# Shape-independent second net: SERVER CODE inside inline payloads. Dodge
+# #3 (2026-08-07): `python3 -c "import http.server; …serve_forever()"` —
+# no filename, no known launcher, still a never-returning server. Match
+# what server code IS, not how it's spelled on the command line.
+_SERVER_CODE_RE = re.compile(
+    r"serve_forever\s*\(|socketserver\.|http\.server|HTTPServer\s*\(|"
+    r"run_simple\s*\(|createServer\s*\(|app\.run\s*\("
+)
+
 
 def _server_command_guard(content: str):
     """Return an error dict when the command is a known never-returning
@@ -313,12 +322,12 @@ def _server_command_guard(content: str):
     first = next((ln.strip() for ln in lines if ln.strip()), "")
     if first.lower() in ("#!fg", "# fg"):
         return None
-    m = _SERVER_CMD_RE.search(content)
+    m = _SERVER_CMD_RE.search(content) or _SERVER_CODE_RE.search(content)
     if not m:
         return None
     return {
         "error": (
-            f"bash: refusing to run '{m.group(1)}' in the foreground — it never "
+            f"bash: refusing to run '{m.group(1) if m.lastindex else m.group(0)}' in the foreground — it never "
             "exits, so it would hold this tool call hostage until timeout. "
             "Use your manage_server tool instead: "
             '{"action": "start", "name": "myapp", "command": "<the command>", '
