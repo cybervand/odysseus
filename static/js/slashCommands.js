@@ -6388,6 +6388,14 @@ async function handleSlashCommand(input) {
   const parts = input.slice(1).split(/\s+/);
   const rawCmd = parts[0].toLowerCase();
   let args = parts.slice(1);
+  // Running a command counts as chat activity (user request, 2026-08-07):
+  // a brand-new chat has NO session id until its first message
+  // materializes it, so commands that act on "this chat" (/server adopt
+  // being the flagship — the poisoned-chat escape flow) failed with
+  // "Target chat not found". Materialize first, same as _persistMsg does.
+  if (!sessionModule.getCurrentSessionId() && sessionModule.hasPendingChat?.()) {
+    try { await sessionModule.materializePendingSession?.(); } catch (_) {}
+  }
   const ctx = _makeCtx();
   let _userShown = false;
   // Tag the echoed command with source:'slash' so it renders in the transcript
