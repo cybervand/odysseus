@@ -111,10 +111,17 @@ def setup_server_routes():
         finally:
             db.close()
         if target is None:
-            raise HTTPException(404, "Target chat not found")
-        towner = target.owner
-        if user is not None and towner is not None and towner != user:
-            raise HTTPException(403, "Target chat belongs to another user")
+            # New chats persist on their FIRST message — adopting from a
+            # fresh empty chat is the primary escape flow (doc 017: abandon
+            # a poisoned chat, take the server along), so a missing row
+            # means "not saved yet", not "bad id". Attachment is
+            # presentation-only (capability follows owner), so a dangling
+            # id is harmless if the chat never materializes.
+            logger.info("[servers] assign %s -> not-yet-persisted chat %s", name, session_id)
+        else:
+            towner = target.owner
+            if user is not None and towner is not None and towner != user:
+                raise HTTPException(403, "Target chat belongs to another user")
         st = bg_jobs.server_assign(name, session_id)
         return _row(request, st, _chat_names([session_id]))
 
