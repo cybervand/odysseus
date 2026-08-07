@@ -8986,6 +8986,53 @@ button.hamburger {
 }
 .attach-strip:empty { display: none; }
 
+/* ── Named-server chips (doc 017) ─────────────────────────────────────── */
+.server-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 2px 8px;
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto 4px;
+  box-sizing: border-box;
+}
+.server-strip:empty { display: none; }
+.server-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: none;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  font-size: 11px;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.server-chip:hover {
+  border-color: color-mix(in srgb, var(--fg) 35%, transparent);
+  color: var(--fg);
+}
+.server-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.server-chip-up .server-chip-dot { background: var(--green, #3fb950); }
+.server-chip-warm .server-chip-dot { background: #d29922; }
+.server-chip-down .server-chip-dot {
+  background: color-mix(in srgb, var(--fg) 30%, transparent);
+}
+.server-chip-down { opacity: 0.75; }
+.server-chip-name { font-weight: 600; }
+.server-chip-detail { opacity: 0.7; }
+
 /* Upload-in-progress feedback: the message bubble shows immediately, so while
    the files are still uploading we put a whirlpool ON each attachment chip and
    dim the chip's content — making it obvious that file is being sent, not stuck. */

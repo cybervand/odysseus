@@ -1017,6 +1017,10 @@
     <!-- Attachments strip -->
     <div id="attach-strip" class="attach-strip"></div>
 
+    <!-- Named-server chips (doc 017): persistent links to the user's running
+         servers; a stopped server shows a /server start hint instead. -->
+    <div id="server-strip" class="server-strip" aria-label="Your servers"></div>
+
     <!-- Hidden elements for form logic -->
     <input type="checkbox" id="research-toggle" style="display:none;">
     <input type="checkbox" id="rag-toggle" style="display:none;">
@@ -2520,6 +2524,7 @@
 <script type="module" src="/static/js/document.js"></script>
 <script type="module" src="/static/js/gallery.js"></script>
 <script type="module" src="/static/js/chatRenderer.js"></script>
+<script type="module" src="/static/js/servers.js"></script>
 <script type="module" src="/static/js/codeRunner.js"></script>
 <script type="module" src="/static/js/chatStream.js"></script>
   <script type="module" src="/static/js/chat.js"></script>

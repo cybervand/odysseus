@@ -22,6 +22,7 @@ import settingsModule from './settings.js';
 import cookbookModule from './cookbook.js';
 import { EVAL_PROMPTS } from './compare/index.js';
 import { PROVIDER_DEVICE_FLOWS, formatDeviceFlowError, runProviderDeviceFlow } from './providerDeviceFlow.js';
+import serversModule from './servers.js';
 
 // ── Module state ──────────────────────────────────────────────────────
 
@@ -5746,12 +5747,121 @@ async function _cmdHelp(args, ctx) {
   return true;
 }
 
+// ── Named servers (doc 017) ───────────────────────────────────────
+// User-driven server control, model-free by design: in the messed-up-chat
+// scenario /server adopt|start|stop still work because the chat's model
+// never sees them. Same owner-scoped API as the chip strip and the
+// manage_server agent tool.
+
+function _srvLine(s) {
+  const state = s.running
+    ? (s.port_listening ? 'running' : 'running (port not listening!)')
+    : 'stopped';
+  const chat = s.chat_name ? `  chat: ${s.chat_name}` : '';
+  const auto = s.autostart ? '  [autostart]' : '';
+  return `• ${s.name}  :${s.port ?? '?'}  ${state}${auto}${chat}`;
+}
+
+async function _cmdServerList(args, ctx) {
+  try {
+    const data = await serversModule.list();
+    const servers = data.servers || [];
+    if (!servers.length) {
+      slashReply('No named servers. Ask the AI to start one — its port is assigned automatically.');
+      return true;
+    }
+    const lines = servers.map(_srvLine);
+    lines.push('', 'Commands: /server start|stop|restart|adopt|remove|logs|open <name>');
+    slashReply(`<pre>${ctx.esc(lines.join('\n'))}</pre>`);
+  } catch (e) {
+    slashReply(`Server list failed: ${ctx.esc(String(e.message || e))}`);
+  }
+  return true;
+}
+
+function _cmdServerAct(action, doneText) {
+  return async function (args, ctx) {
+    const name = (args[0] || '').trim();
+    if (!name) { slashReply(`Usage: /server ${action} <name>`); return true; }
+    try {
+      const s = await serversModule.act(name, action);
+      slashReply(`${doneText} '${ctx.esc(name)}'.` + (s && s.name ? `<br>${ctx.esc(_srvLine(s))}` : ''));
+    } catch (e) {
+      slashReply(ctx.esc(String(e.message || e)));
+    }
+    serversModule.refresh();
+    return true;
+  };
+}
+
+async function _cmdServerAdopt(args, ctx) {
+  const name = (args[0] || '').trim();
+  if (!name) { slashReply('Usage: /server adopt <name>'); return true; }
+  try {
+    const s = await serversModule.assignToSession(name, ctx.sid);
+    slashReply(`'${ctx.esc(name)}' is now attached to this chat.<br>${ctx.esc(_srvLine(s))}`);
+  } catch (e) {
+    slashReply(ctx.esc(String(e.message || e)));
+  }
+  serversModule.refresh();
+  return true;
+}
+
+async function _cmdServerLogs(args, ctx) {
+  const name = (args[0] || '').trim();
+  if (!name) { slashReply('Usage: /server logs <name>'); return true; }
+  try {
+    const data = await serversModule.logs(name);
+    const tail = (data.logs || '(no output)').split('\n').slice(-40).join('\n');
+    slashReply(`<pre>${ctx.esc(tail)}</pre>`);
+  } catch (e) {
+    slashReply(ctx.esc(String(e.message || e)));
+  }
+  return true;
+}
+
+async function _cmdServerOpen(args, ctx) {
+  const name = (args[0] || '').trim();
+  if (!name) { slashReply('Usage: /server open <name> [/path]'); return true; }
+  try {
+    const data = await serversModule.list();
+    const s = (data.servers || []).find(x => x.name === name);
+    if (!s) { slashReply(`Unknown server '${ctx.esc(name)}'`); return true; }
+    if (!s.running || !s.url) {
+      slashReply(`'${ctx.esc(name)}' is stopped — /server start ${ctx.esc(name)} first.`);
+      return true;
+    }
+    const path = (args[1] || '').trim();
+    window.open(s.url + (path.startsWith('/') ? path : ''), '_blank', 'noopener');
+    slashReply(`Opened ${ctx.esc(s.url)}`);
+  } catch (e) {
+    slashReply(ctx.esc(String(e.message || e)));
+  }
+  return true;
+}
+
 // ── Command registry ──────────────────────────────────────────────
 // Each top-level key is a command group.  Flat commands have a handler
 // directly; grouped commands use `subs`.  `default` is the sub run
 // when the command is invoked bare (e.g. `/chats` -> info).
 
 const COMMANDS = {
+  server: {
+    alias: ['servers', 'srv'],
+    category: 'Agent',
+    help: 'Your named servers: list, start/stop, adopt into this chat',
+    default: 'list',
+    subs: {
+      'list':    { handler: _cmdServerList,                            alias: ['ls'],            help: 'List your servers',                usage: '/servers' },
+      'start':   { handler: _cmdServerAct('start', 'Started'),         alias: [],                help: 'Relaunch a stopped server',        usage: '/server start <name>' },
+      'stop':    { handler: _cmdServerAct('stop', 'Stopped'),          alias: [],                help: 'Stop a server',                    usage: '/server stop <name>' },
+      'restart': { handler: _cmdServerAct('restart', 'Restarted'),     alias: [],                help: 'Restart (applies code edits)',     usage: '/server restart <name>' },
+      'adopt':   { handler: _cmdServerAdopt,                           alias: ['assign','take'], help: 'Attach a server to this chat',     usage: '/server adopt <name>' },
+      'remove':  { handler: _cmdServerAct('remove', 'Removed'),        alias: ['rm','delete'],   help: 'Delete from the registry',         usage: '/server remove <name>' },
+      'logs':    { handler: _cmdServerLogs,                            alias: ['log','tail'],    help: 'Show recent server output',        usage: '/server logs <name>' },
+      'open':    { handler: _cmdServerOpen,                            alias: ['o','visit'],     help: 'Open the server in a new tab',     usage: '/server open <name> [/path]' }
+    }
+  },
   chats: {
     alias: ['chat', 'session', 'sessions', 's'],
     category: 'Chats',
