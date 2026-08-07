@@ -54,6 +54,18 @@ def _row(rec: Dict[str, Any]) -> str:
 _QUERY_MAX_BYTES = 8192
 _QUERY_TIMEOUT_S = 8.0
 
+# Pull-teaching (user idea, 2026-08-07): the model can ASK for the manual
+# at the moment it's lost — and a wrong action gets the manual as its
+# error. Compact by design: every line is an action it can copy.
+_SERVER_HELP = """manage_server actions:
+- start {"name", "command", "cwd"} — launch or replace. The port is ASSIGNED and exported as the PORT env var; write $PORT in the command for argv-port programs (e.g. "python3 -m http.server $PORT").
+- restart {"name"} — relaunch; REQUIRED after every code edit. Add "command" to replace the stored command.
+- stop {"name"} — stop but keep registered.  remove {"name"} — delete from the registry.
+- status {"name"} / logs {"name"} / list — inspect.
+- query {"name", "path", "method"?, "body"?} — HTTP-probe your own server (no bash needed). Example: {"action": "query", "name": "myapp", "path": "/"}
+- adopt {"name"} — attach a server from another chat to this one.
+Never start servers via bash — they never exit and freeze the run."""
+
 
 class ManageServerTool:
     """Server lifecycle as a first-class tool (the stale-process lesson,
@@ -136,6 +148,9 @@ class ManageServerTool:
                         f"the command itself (e.g. 'python3 -m http.server $PORT') "
                         f"and restart. Do not pick a different port yourself.")
             return ""
+
+        if action in ("help", "?", "usage", "actions"):
+            return {"output": _SERVER_HELP, "exit_code": 0}
 
         if action == "list":
             servers = [s for s in bg_jobs.server_list() if _mine(s)]
@@ -245,8 +260,7 @@ class ManageServerTool:
         if action == "query":
             return await self._query(bg_jobs, st, args)
 
-        return {"error": f"manage_server: unknown action '{action}' "
-                         f"(start|stop|restart|status|logs|list|query|adopt|remove)",
+        return {"error": f"manage_server: unknown action '{action}'.\n{_SERVER_HELP}",
                 "exit_code": 1}
 
     async def _query(self, bg_jobs, st, args) -> dict:

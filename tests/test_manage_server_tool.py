@@ -149,6 +149,23 @@ def test_restart_with_new_command_replaces(monkeypatch, tmp_path):
     assert port_envs[-1] == "13000"           # keeps the assigned port
 
 
+def test_help_action_returns_usage(monkeypatch, tmp_path):
+    _fake_bg(monkeypatch, tmp_path)
+    r = _run(ManageServerTool(), {"action": "help"})
+    assert r["exit_code"] == 0
+    for word in ("start", "restart", "query", "adopt", "$PORT"):
+        assert word in r["output"]
+
+
+def test_unknown_action_error_carries_the_manual(monkeypatch, tmp_path):
+    # Pull-teaching: a wrong guess gets the manual as its error.
+    _fake_bg(monkeypatch, tmp_path)
+    r = _run(ManageServerTool(), {"action": "launch", "name": "x"})
+    assert r["exit_code"] == 1
+    assert "unknown action" in r["error"]
+    assert "query" in r["error"] and "restart" in r["error"]
+
+
 def test_fresh_start_with_out_of_range_port_teaches(monkeypatch, tmp_path):
     # Doc 017: models must not pick ports; a fresh start naming one outside
     # the range is refused with the PORT-env teaching, not honored.

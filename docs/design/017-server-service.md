@@ -164,6 +164,14 @@ returns 200, container restart revives it via autostart.
 
 ## Open items
 
+- **`help` action rollout** (user idea 2026-08-07, reference implementation
+  in manage_server): every multi-action tool should answer
+  `action="help"` with a compact copyable usage card, and unknown actions
+  should return that card as the error — pull-teaching to complement the
+  result-breadcrumb push-teaching. Candidates: manage_documents,
+  manage_bg_jobs, manage_memory, manage_notes, manage_calendar,
+  manage_session, manage_skills, manage_tasks.
+
 - **Stable proxied URLs** (`/serve/<name>/` in-app reverse proxy):
   permanent links independent of ports, plays well with a future Tailscale
   sidecar — but path-prefix-blind generated apps break under it. Needs its

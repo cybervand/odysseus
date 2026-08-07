@@ -99,7 +99,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["start", "stop", "restart", "status", "logs", "list", "query", "adopt", "remove"]},
+                    "action": {"type": "string", "enum": ["start", "stop", "restart", "status", "logs", "list", "query", "adopt", "remove", "help"]},
                     "name": {"type": "string", "description": "Server name, e.g. 'skilodge'"},
                     "command": {"type": "string", "description": "start only: the launch command, e.g. 'python app.py'"},
                     "cwd": {"type": "string", "description": "start only: working directory, e.g. '/app/data/skilodge'"},
