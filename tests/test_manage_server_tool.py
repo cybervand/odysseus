@@ -35,6 +35,11 @@ def test_guard_blocks_known_server_commands():
         "vite preview --open",
         "cd site && flask run",
         "python3 -m http.server 8000",
+        # Path-qualified forms dodged the guard (2026-08-07 lodge_website
+        # hostage run: `python /app/data/app.py` in foreground, 502 + queue).
+        "python /app/data/app.py",
+        "python3 /srv/site/server.py",
+        "node /app/data/qwenmax/skilodge/server.js",
     ):
         g = _server_command_guard(cmd)
         assert g is not None, cmd

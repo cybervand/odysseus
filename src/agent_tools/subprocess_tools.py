@@ -297,7 +297,12 @@ async def _run_subprocess_streaming(
 _SERVER_CMD_RE = re.compile(
     r"\b(npm run dev|npm start|yarn dev|pnpm dev|vite preview|vite dev|"
     r"flask run|python[0-9.]* -m http\.server|uvicorn |gunicorn |"
-    r"ng serve|next dev|python[0-9.]* app\.py|node (?:server|app|index)\.js)\b"
+    # Path-qualified launches must match too: `python /app/data/app.py`
+    # dodged the bare `python app.py` pattern (2026-08-07 lodge_website
+    # run) and held the run hostage to the 300s timeout — the user saw a
+    # 502 and queued messages.
+    r"ng serve|next dev|python[0-9.]* (?:\S*/)?(?:app|server|wsgi)\.py|"
+    r"node (?:\S*/)?(?:server|app|index)\.js)\b"
 )
 
 
@@ -317,9 +322,10 @@ def _server_command_guard(content: str):
             "exits, so it would hold this tool call hostage until timeout. "
             "Use your manage_server tool instead: "
             '{"action": "start", "name": "myapp", "command": "<the command>", '
-            '"cwd": "<project dir>", "port": <port>} — then manage_server '
-            '{"action": "restart", "name": "myapp"} after EVERY code edit '
-            "(edits do not apply to a running process), and "
+            '"cwd": "<project dir>"} — the port is ASSIGNED automatically and '
+            "exported to your app as the PORT env var (do not pick one). Then "
+            'manage_server {"action": "restart", "name": "myapp"} after EVERY '
+            "code edit (edits do not apply to a running process), and "
             '{"action": "logs", "name": "myapp"} to read its output. '
             "If this really is a finite script, resend with #!fg as the first line."
         ),

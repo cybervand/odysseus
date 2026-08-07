@@ -24,8 +24,14 @@ echo "=== 2. build ${IMAGE}"
 docker build -q -t "$IMAGE" .
 
 echo "=== 3b. IN-IMAGE TEST GATE (doc 007) — no green, no swap"
-docker run --rm -v "$BUILD_DIR/tests:/srctests:ro" "$IMAGE" \
-  sh -c 'cp -r /srctests /app/tests && cd /app && \
+# Staging faithfulness (learned on the first gate run, 2026-08-07): the
+# image excludes tests/ AND README.md (repo-scanning tests need it), and
+# the entrypoint setup CREATES /app/.env — which test_env_file_is_optional
+# asserts absent. Stage both back to a clean-checkout shape before pytest.
+docker run --rm -v "$BUILD_DIR/tests:/srctests:ro" \
+  -v "$BUILD_DIR/README.md:/srcreadme:ro" "$IMAGE" \
+  sh -c 'cp -r /srctests /app/tests && cp /srcreadme /app/README.md && \
+         rm -f /app/.env && cd /app && \
          pip install -q pytest >/dev/null 2>&1; \
          python -m pytest tests/ -q --tb=line' \
   || { echo "GATE-FAILED: suite red inside ${IMAGE} — deploy aborted"; exit 1; }

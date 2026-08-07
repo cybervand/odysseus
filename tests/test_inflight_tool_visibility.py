@@ -34,7 +34,16 @@ async def test_list_runs_carries_current_tool_while_executing():
 
         run = ar.start("inflight-test", agen())
         await asyncio.wait_for(started.wait(), timeout=5)
-        entry = next(r for r in ar.list_runs() if r["session_id"] == "inflight-test")
+        # list_runs is a monitoring API — its contract is visibility within
+        # a moment, not at an exact interleaving. Under full-suite load this
+        # raced rarely on BOTH Windows and Linux (KeyError: current_tool),
+        # so poll briefly instead of asserting the first snapshot.
+        entry = {}
+        for _ in range(50):
+            entry = next(r for r in ar.list_runs() if r["session_id"] == "inflight-test")
+            if "current_tool" in entry:
+                break
+            await asyncio.sleep(0.02)
         assert entry["current_tool"] == "bash"
         assert "python app.py" in entry["tool_args_head"]
         assert entry["tool_running_s"] >= 0
