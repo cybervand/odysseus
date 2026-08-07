@@ -134,7 +134,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "find_images",
-            "description": "Find VERIFIED open-license image URLs for a subject (Wikimedia Commons). The result lines are already checked live (HTTP 200) — use them directly in HTML/markdown. Always use this to get real images; never invent image URLs and never scrape image pages by hand.",
+            "description": "Find VERIFIED image URLs for a subject (web image search + Wikimedia Commons). Result lines are already checked live (HTTP 200) — use them directly in HTML/markdown. Always use this to get real images; never invent image URLs and never scrape image pages by hand. Batch your asks: one call per SUBJECT with count up to 5, reusing URLs across the page — NOT one call per page section (that trips rate limits).",
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -24,13 +24,17 @@ echo "=== 2. build ${IMAGE}"
 docker build -q -t "$IMAGE" .
 
 echo "=== 3b. IN-IMAGE TEST GATE (doc 007) — no green, no swap"
-# Staging faithfulness (learned on the first gate run, 2026-08-07): the
-# image excludes tests/ AND README.md (repo-scanning tests need it), and
-# the entrypoint setup CREATES /app/.env — which test_env_file_is_optional
-# asserts absent. Stage both back to a clean-checkout shape before pytest.
+# Staging faithfulness (learned across gate runs 1-2, 2026-08-07): the
+# image ships /app code but excludes the repo META files that
+# repo-scanning tests read — tests/, README.md, .gitignore, docs/ — and
+# the entrypoint setup CREATES /app/.env (test_env_file_is_optional
+# asserts it absent). Stage back to clean-checkout shape before pytest;
+# a future missing file will name itself in the gate output.
 docker run --rm -v "$BUILD_DIR/tests:/srctests:ro" \
-  -v "$BUILD_DIR/README.md:/srcreadme:ro" "$IMAGE" \
-  sh -c 'cp -r /srctests /app/tests && cp /srcreadme /app/README.md && \
+  -v "$BUILD_DIR/README.md:/srcmeta/README.md:ro" \
+  -v "$BUILD_DIR/.gitignore:/srcmeta/.gitignore:ro" \
+  -v "$BUILD_DIR/docs:/srcmeta/docs:ro" "$IMAGE" \
+  sh -c 'cp -r /srctests /app/tests && cp -r /srcmeta/. /app/ && \
          rm -f /app/.env && cd /app && \
          pip install -q pytest >/dev/null 2>&1; \
          python -m pytest tests/ -q --tb=line' \

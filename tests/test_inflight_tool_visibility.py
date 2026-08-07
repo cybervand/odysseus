@@ -3,15 +3,20 @@ queryable — logs only recorded completions, so a blocking server launch
 held a run hostage for 10 minutes with zero server-side trace (2026-08-06,
 twice)."""
 import asyncio
+import importlib
 
 import pytest
-
-import src.agent_runs as ar
-import src.tool_execution as te
 
 
 @pytest.mark.anyio
 async def test_list_runs_carries_current_tool_while_executing():
+    # Resolve modules at RUNTIME, not collection: an earlier test reloading
+    # src.tool_execution would otherwise split identities — this test would
+    # patch/write the OLD module while list_runs lazily imports the NEW one,
+    # and current_tool never appears (failed in full-suite runs on both
+    # Windows and Linux while passing standalone, 2026-08-07).
+    ar = importlib.import_module("src.agent_runs")
+    te = importlib.import_module("src.tool_execution")
     started = asyncio.Event()
     release = asyncio.Event()
 
