@@ -12,6 +12,7 @@ from another session is treated as not found.
 
 import asyncio
 import json
+import os
 import time
 from typing import Any, Dict, List
 
@@ -93,12 +94,20 @@ class ManageServerTool:
             port = f", port {st['port']} {'listening' if st.get('port_listening') else 'NOT listening'}" if st.get("port") else ""
             up = f", up {int(st['uptime_s'])}s" if st.get("uptime_s") else ""
             auto = ", autostart" if st.get("autostart") else ""
+            # The user browses from another machine: a bare localhost URL is
+            # WRONG for them (observed live: model told the user
+            # localhost:5000; the link failed from their browser).
+            pub = os.environ.get("ODYSSEUS_PUBLIC_HOST", "").strip()
+            url = ""
+            if pub and st.get("port") and st.get("running"):
+                url = (f"\n  reachable at http://{pub}:{st['port']} — give the "
+                       f"user THIS URL, never localhost")
             attach = ""
             if st.get("session_id") and st["session_id"] != session_id:
                 attach = "\n  attached to another chat — {\"action\": \"adopt\"} takes it over here"
             return (f"server '{st['name']}': {run}{port}{up}{auto}\n"
                     f"  command: {st.get('command')}  (cwd: {st.get('cwd') or '-'})"
-                    f"{attach}")
+                    f"{url}{attach}")
 
         def _unknown(n):
             return {"error": f"manage_server: unknown server '{n}' (see action='list')", "exit_code": 1}
@@ -142,7 +151,15 @@ class ManageServerTool:
             if not command:
                 return {"error": "manage_server: 'command' is required for start", "exit_code": 1}
             cwd = str(args.get("cwd") or "").strip() or None
-            port = args.get("port") if isinstance(args.get("port"), int) else None
+            # Models send port as a STRING ("5000") — the old isinstance(int)
+            # check silently DROPPED it (registry got port null, listening
+            # check dead). Coerce digits; let the allocator's teaching error
+            # handle out-of-range values instead of silence.
+            port = args.get("port")
+            if isinstance(port, str) and port.strip().isdigit():
+                port = int(port.strip())
+            if not isinstance(port, int) or isinstance(port, bool):
+                port = None
             autostart = args.get("autostart") if isinstance(args.get("autostart"), bool) else None
             try:
                 st = await asyncio.to_thread(

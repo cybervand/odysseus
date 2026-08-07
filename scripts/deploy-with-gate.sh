@@ -65,6 +65,7 @@ docker run -d --name odysseus \
   -e CHROMADB_PORT=8000 \
   -e AUTH_ENABLED=true \
   -e ODYSSEUS_INPROCESS_TASKS=1 \
+  -e ODYSSEUS_PUBLIC_HOST=192.168.1.192 \
   -v /mnt/user/appdata/odysseus/data/huggingface:/app/.cache/huggingface \
   -v /mnt/user/appdata/odysseus/data/local:/app/.local \
   -v /mnt/user/appdata/odysseus/data:/app/data \

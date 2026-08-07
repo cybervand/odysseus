@@ -1172,11 +1172,15 @@ def _named_server_context_message(here: List[Dict], elsewhere: List[Dict]) -> Op
     if not here and not elsewhere:
         return None
 
+    _pub = os.environ.get("ODYSSEUS_PUBLIC_HOST", "").strip()
+
     def _fmt(s):
         state = "running" if s.get("running") else "stopped"
         if s.get("running") and not s.get("port_listening"):
             state = "running but NOT listening on its assigned port"
         bits = [f"name={s.get('name')}", f"port={s.get('port')}", state]
+        if _pub and s.get("port"):
+            bits.append(f"url=http://{_pub}:{s.get('port')}")
         if s.get("cwd"):
             bits.append(f"code={s.get('cwd')}")
         return "- " + "; ".join(bits)
@@ -1198,7 +1202,10 @@ def _named_server_context_message(here: List[Dict], elsewhere: List[Dict]) -> Op
         "env var. If a port seems taken, it is almost always one of the servers "
         'above — restart or stop it, do not pick a different port. action="query" '
         "probes a server over HTTP without needing bash. Never claim these are "
-        "inaccessible or that you cannot edit or restart them.",
+        "inaccessible or that you cannot edit or restart them."
+        + (" When telling the user where a server runs, give its url from the "
+           "list above — localhost is wrong for them, they browse from another "
+           "machine." if _pub else ""),
     ])
     return untrusted_context_message("named servers registry", "\n".join(lines))
 

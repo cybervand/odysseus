@@ -338,6 +338,13 @@ _TOOL_NAME_MAP = {
     "manage_bg_jobs": "manage_bg_jobs",
     "bg_jobs": "manage_bg_jobs",
     "background_jobs": "manage_bg_jobs",
+    "manage_server": "manage_server",
+    # Observed live 2026-08-07: qwen3-coder pluralized the name three times
+    # in one run, every call died as "Unknown function call", and the model
+    # fell back to raw bash flask launches (duplicate processes, port 5000).
+    "manage_servers": "manage_server",
+    "manage_framework": "manage_framework",
+    "manage_frameworks": "manage_framework",
 }
 
 _MISFENCED_WEB_TOOL_NAMES = {
