@@ -146,6 +146,49 @@ computations that fit inside a forward pass**. Anything with IO — files,
 servers, network — stays in the agent loop. This complements the doc
 001–017 harness; it does not replace it.
 
+## Phase 1 findings (2026-08-08 — completed in one evening, as budgeted)
+
+Lab: container `virtual-experts-lab` on copperwarehouse (pytorch image +
+torch 2.9.1/cu126 + transformers 5.14 + kernels **0.15.2** + gcc for
+triton JIT). Model: HF safetensors at `/mnt/cache/LLms/hf`. Probes in
+`/mnt/user/appdata/virtual-experts/`; raw data `/lab/heatmap.json`.
+
+- **O1′ PASS.** MXFP4 loads *quantized* (Mxfp4Config intact) sharded
+  across both A2000s: **5.93 + 7.84 GB**, 12 s load, generation works
+  (~1.7 tok/s via transformers — research-grade, as expected). Ampere
+  sm86 is officially supported (`compute_capability >= (7,5)` in the
+  quantizer gate). Environment landmines for the record: pytorch:latest
+  image ships torch 2.2 (upgrade), torch 2.13+cu130 bleeding edge causes
+  illegal-memory-access on load (pin 2.9.1), `kernels` must satisfy the
+  window `0.15.2 ≤ v < 0.16.0`, and triton JIT needs a C compiler the
+  runtime image lacks.
+- **Baseline reproduced verbatim:** stock model answers `127 * 89 =`
+  with *" 11263. So 11263 is prime? Let's check:"* — the exact wrong
+  answer and prime-check spiral from the video, on our hardware.
+- **Math is a real router-level class.** Within-family top-4 Jaccard
+  across four different arithmetic prompts: **0.6–0.8 at most layers**,
+  vs math↔neutral ≈ 0.0–0.3 and math↔false-positive **≤ 0.17 nearly
+  everywhere**. The routers separate math from neutral prose from layer
+  0 (zero shared top experts at L0) — Hay's early-classification claim
+  is quantitatively confirmed here.
+- **The false-positive problem is largely pre-solved.** Phone numbers,
+  "Boeing 747", version strings, addresses route almost entirely unlike
+  real math at every layer (one blip at L16). Calibrated probes inherit
+  this discrimination for free — de-risks the §7 probe suite
+  substantially.
+- **O5: qualified yes.** Deliberately heterogeneous agent-shaped prompts
+  (JSON fragment / prose intent / TOOL CALL text / command line) agree
+  ~0.2–0.5 within-family — weaker than math's ~0.7, but well above
+  agent↔neutral (~0.15) — and **converge to 0.8 at layer 23**. Agent
+  context is detectable in routing space; a tool-call-validity expert
+  should calibrate on homogeneous emission-context prompts and read
+  late layers (or L16+). Hook detail that cost an hour: the MXFP4 fast
+  path computes router logits via `nn.functional.linear` directly — the
+  router module never fires forward hooks; hook the **MLP pre-forward**
+  and recompute logits instead.
+- **O3 informed:** separation exists from L0–L2, so an early-layer
+  hijack subset is viable for math; agent detection favors late layers.
+
 ## Rejected alternatives
 
 - **Porting the reference as-is** — it does not contain the mechanism
