@@ -177,8 +177,15 @@ not beat Ollama wall-clock, and the doc should never promise it.
   substitution; neither injection strategy exists anywhere. We invent.
 - O3: hijack/observe all 24 layers vs early subset — Phase 1 heatmaps
   decide.
-- O4: pruning remap vs zero-out under MXFP4; plus does pruning require
-  router retraining (video narration suggests his did).
+- O4: pruning remap vs zero-out under MXFP4. **Half-answered
+  (2026-08-08, `gpt-oss-lite-v2/build_minimal_lite.py`):** the reference
+  prunes by static frequency selection + tensor slicing — NO retraining
+  anywhere in code ("just by retraining the router" was loose
+  narration), and Hay's own README documents the resulting degradation
+  ("2+2=" → "3" on the 16-expert build; missing attention biases noted
+  as a known defect). The lite+virtual demo's math correctness comes
+  entirely from answer substitution. Our Phase 3 quality bar must beat
+  static frequency selection or accept the same degradation.
 - O5 (new): do agent-shaped prompts ("about to emit a tool call")
   classify as crisply as arithmetic? Decides the tool-validity expert.
 - Note: repo is spelled `chuk-lazurus` (URL) with package
