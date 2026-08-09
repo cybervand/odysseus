@@ -290,6 +290,30 @@ constants) is a contained evening; symbolic algebra (sympy) is a
 different beast and widens the FP surface — decide only after
 Strategy A exists.
 
+### Word problems: the trigger moves to the decode stream (2026-08-09)
+
+Asked "how do we combine this with a natural-sounding word problem?"
+(mixed-unit acceleration problem), the answer fell out of a live
+transcript: the prompt contains **no literal expression** (bare numbers,
+no operators — Strategy 0 correctly routes neural), but the model's own
+*analysis channel* is full of them — it wrote `80*1.609=128.72`,
+`a=(v²-u²)/(2s)`, `t=(v-u)/a`, having translated the words into physics
+unaided (it even converted mph→km/h correctly and flagged the problem's
+ambiguity in its final answer). Every `=` it emits is sampled tokens,
+though — each one a silent-flub site.
+
+**Design consequence for Strategy A:** the detector must run on the
+*emission stream*, not just the prompt. When generated text ends with
+`<expr>=`, pause decode, AST-eval the expression, force the exact digit
+tokens, resume neural. Division of labor: language → formula is the
+network's job (ambiguity, units, physics model); formula → digits is
+the expert's. The expert never parses prose. Precedent: GSM8K
+calculator annotations (`<<100/56=…>>`) and Toolformer — known-good
+pattern; our fork's addition remains the router gate (observers arm the
+interceptor cheaply per-layer; the kill criterion measures whether that
+gate earns rent over an always-armed regex). Prompt-side substitution
+(today's shim) stays as the fast path for bare arithmetic.
+
 ## Rejected alternatives
 
 - **Porting the reference as-is** — it does not contain the mechanism
@@ -332,6 +356,11 @@ not beat Ollama wall-clock, and the doc should never promise it.
   static frequency selection or accept the same degradation.
 - O5 (new): do agent-shaped prompts ("about to emit a tool call")
   classify as crisply as arithmetic? Decides the tool-validity expert.
+- O6 (new, 2026-08-09): emission-time interception mechanics for
+  Strategy A — pause-at-`=`, compute, force digits, resume. Needs a
+  custom LogitsProcessor or manual decode loop (transformers `generate`
+  has no mid-stream pause/rewrite); decide during Phase 2. The stream
+  detector must reuse the FP guards (fragments, hyphen chains).
 - Note: repo is spelled `chuk-lazurus` (URL) with package
   `chuk_lazarus` — both spellings are "correct."
 
