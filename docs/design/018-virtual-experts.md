@@ -231,6 +231,41 @@ Never both loaded at once.
   sharded A2000s (Phase 1's 1.7 tok/s figure came from long-generation
   probe conditions). Research-grade either way, as the doc promises.
 
+### Hardening after first real picker use (2026-08-09, same evening)
+
+The user's first real prompt (`55×123=`) hung for minutes and exposed
+three defects the curl smoke tests couldn't:
+
+- **Unicode operators.** `×` is not `*`; the math path never fired and
+  the prompt fell through to generation. Fixed: normalize `× ÷ − · ^`
+  (and fullwidth forms) before detection. ASCII `x` deliberately stays
+  an identifier — "1920x1080" and "4x4" must not become arithmetic.
+- **Eager attention OOMs at real prompt sizes.** Odysseus sends a
+  multi-thousand-token system prompt; eager attention materializes the
+  full attention matrix and spiked 1.12 GiB over GPU 1's headroom.
+  **On the A2000s, eager is also the only implementation that works:**
+  sdpa raises (GptOss attention sinks unsupported in transformers
+  5.14), and flex_attention compiles a triton kernel requiring 144 KB
+  shared memory vs sm86's 99 KB hard limit (`No valid triton configs`).
+  Mitigation: head+tail prompt truncation to 1536 tokens (512 head
+  keeps the harmony system header intact) + `expandable_segments`
+  allocator. Verified with a 7362-token prompt. Flex-on-sm86 block-size
+  tuning is a possible future unlock; not worth it for Strategy 0.
+- **Generation-thread death hung the SSE stream.** The OOM killed the
+  `generate()` thread; `TextIteratorStreamer` never signaled end, the
+  stream stayed open, and the picker spun on "Processing request"
+  forever. Fixed: exceptions propagate — `streamer.end()` releases the
+  consumer and the error renders as visible ⚠ text in chat;
+  non-stream returns an OpenAI-shaped 500. Plus `[req]` log lines
+  (path/prompt_toks/truncation) so the next diagnosis reads one line
+  instead of a traceback.
+
+Retest after fix: `55×123=` instant exact **6765**; 7362-token prompt
+generates cleanly in 6.5 s; Boeing 747-8 still routes neural. Honest
+framing for the picker: the *neural* path on real prompts is slower
+than Ollama's gpt-oss and always will be on this serving stack — the
+instant-exact math path (and later Strategy A) is the point.
+
 ## Rejected alternatives
 
 - **Porting the reference as-is** — it does not contain the mechanism
