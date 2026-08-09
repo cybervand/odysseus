@@ -189,6 +189,48 @@ triton JIT). Model: HF safetensors at `/mnt/cache/LLms/hf`. Probes in
 - **O3 informed:** separation exists from L0–L2, so an early-layer
   hijack subset is viable for math; agent detection favors late layers.
 
+## Strategy-0 serving shim (2026-08-09 — Phase 4 seed, one evening)
+
+Strategy 0 is now a served, picker-visible model. Canonical script:
+`/mnt/user/appdata/virtual-experts/serve_virtual.py` (server-side, like
+the Phase 1 probes); container `virtual-experts-lab` recreated with the
+shim as PID 1 (`python serve_virtual.py`, host port **8899** published).
+**Lifecycle = contention protocol:** `docker start virtual-experts-lab`
+→ serving (~15 s model load); `docker stop` → GPUs free for Ollama.
+Never both loaded at once.
+
+- **Registered in Odysseus:** `model_endpoints` row `7dbad75c`
+  (`virtual-experts-lab`, `http://192.168.1.113:8899/v1`, kind=local,
+  shared, `cached_models=["math-expert"]` pre-filled). Inserted via
+  `docker exec -u 99` DB write (no pinned `ODYSSEUS_INTERNAL_TOKEN` in
+  the prod container, so the admin HTTP route isn't callable
+  out-of-band). Reachability verified from inside the odysseus
+  container. No `supports_tools` — chat-only research artifact; the
+  shim ignores tool definitions.
+- **Math path:** last user message → regex candidate → AST-whitelisted
+  eval → instant substituted answer, honestly labeled *"computed by the
+  Python virtual expert"*. `127 * 89` → **11303** exact (stock model:
+  11263, reproduced Phase 1). Works streaming and non-streaming.
+- **Good-faith baseline rules** (this is the kill-criterion comparator,
+  so it must be reasonable, not a strawman): expression needs two
+  numbers joined by an operator; unspaced hyphen chains (`555-1234`,
+  `747-8`, `2026-08-09`) are identifiers, not subtraction. Smoke-tested:
+  "Boeing 747-8" and a phone number both route to the neural path.
+- **Neural path is harmony-aware:** generation decodes with special
+  tokens intact and splits channels — analysis/commentary stream as
+  `reasoning_content` (Odysseus renders it as thinking;
+  `llm_core` reads that field for both stream and non-stream), final
+  channel as `content`. Multi-token channel headers are held back
+  (48 chars) so a half-arrived `<|channel|>final<|message|>` never
+  leaks into visible text. `reasoning_effort` passes through
+  (default low). transformers 5.x gotcha for the record:
+  `apply_chat_template` returns a `BatchEncoding` — pass
+  `**enc` to `generate()`, not the object positionally (the v1 shim
+  crashed exactly there).
+- **Perf observed:** short generations ~8–10 tok/s end-to-end on the
+  sharded A2000s (Phase 1's 1.7 tok/s figure came from long-generation
+  probe conditions). Research-grade either way, as the doc promises.
+
 ## Rejected alternatives
 
 - **Porting the reference as-is** — it does not contain the mechanism
@@ -248,6 +290,11 @@ not beat Ollama wall-clock, and the doc should never promise it.
 
 ## Decision log
 
+- 2026-08-09 — Strategy-0 shim built, served, and registered: harmony-
+  split OpenAI shim as the lab container's main process on :8899,
+  endpoint `7dbad75c` in the model picker. Baseline is now a usable
+  chat model; Strategy A (Phase 2) is next and inherits the serving
+  plumbing unchanged.
 - 2026-08-08 — Doc created from the user's v0.1 draft + investigation:
   single-box revision (no CPU fallback, contention protocol, pruned-fits-
   one-card endgame), transcript + source verdict (O2 answered: reference
