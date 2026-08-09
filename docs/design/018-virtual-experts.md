@@ -266,6 +266,30 @@ framing for the picker: the *neural* path on real prompts is slower
 than Ollama's gpt-oss and always will be on this serving stack — the
 instant-exact math path (and later Strategy A) is the point.
 
+### Capability edge probed (2026-08-09, "can it do orbital equations?")
+
+Live probes found a **new false-positive class: expression fragments.**
+Scientific notation (`6.674e-11 * 5.972e24 / 6771000`) split at the
+letter `e` and the evaluator confidently answered the fragment
+`24 / 6771000` — a wrong answer labeled exact, the worst failure this
+project can produce. Fixed by admitting `eE` to the expression regex
+(ast parses `6.674e-11` natively; bare sci numbers still don't trigger
+— the operator gate holds) and allowing a leading `(` so
+`(GM/r)**0.5` forms match (ast rejects unbalanced garbage). After the
+fix, `(6.674*10**-11 * 5.972*10**24 / 6771000)**0.5` returns
+**7672.3 m/s instantly** — numerically-written orbital mechanics works.
+**Add "expression fragments" to the §7 FP suite** alongside Boeing/
+phones/dates: any future evaluator extension re-risks this class.
+
+Honest capability map as shipped: literal numeric arithmetic incl.
+powers, parens, sci-notation — yes, instant, exact. Functions (sqrt,
+trig, log), constants (G, π), symbols, units, rearranging, word
+problems — no; those route to the neural path like any prose. A
+scientific-calculator upgrade (whitelisted `math.*` calls + named
+constants) is a contained evening; symbolic algebra (sympy) is a
+different beast and widens the FP surface — decide only after
+Strategy A exists.
+
 ## Rejected alternatives
 
 - **Porting the reference as-is** — it does not contain the mechanism
