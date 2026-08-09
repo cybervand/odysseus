@@ -281,6 +281,17 @@ fix, `(6.674*10**-11 * 5.972*10**24 / 6771000)**0.5` returns
 **Add "expression fragments" to the §7 FP suite** alongside Boeing/
 phones/dates: any future evaluator extension re-risks this class.
 
+Second fragment vector, same evening: **decimal commas.** The user is
+Norwegian; `128,748 / 56` split at the comma and would have answered
+`748 / 56` — locale-triggered, not notation-triggered, otherwise the
+identical failure. And `128,748` is unrecoverably ambiguous (NO decimal
+= 128.748, EN thousands = 128748), so the guard *rejects* rather than
+guesses: candidates glued to a digit-comma boundary never evaluate —
+they route neural. Period-decimals compute; comma-decimals get the
+network. FP-suite rule distilled from tonight: **when the surface form
+is ambiguous, don't fire — a false negative costs speed, a false
+positive costs a wrong answer labeled exact.**
+
 Honest capability map as shipped: literal numeric arithmetic incl.
 powers, parens, sci-notation — yes, instant, exact. Functions (sqrt,
 trig, log), constants (G, π), symbols, units, rearranging, word
