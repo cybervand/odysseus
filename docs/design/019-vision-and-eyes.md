@@ -113,6 +113,25 @@ tests.
    (~1.2 s), and the in-browser detector tier is optional rather than
    load-bearing at these speeds.
 
+   **Model lifecycle (2026-08-10): vision models load only while the
+   lens is up.** Open → immediate warmup ping (load hides behind the
+   aiming moment; "warming up" indicator — colds measured 18–88 s cold
+   page cache, seconds warm); every frame carries a rolling
+   `keep_alive` (~10 min); close → `navigator.sendBeacon` on page-hide
+   hits an unload endpoint (`keep_alive: 0`); server-side idle timer
+   unloads regardless if frames stop (a crashed tab must not squat on
+   a card). Chat vision is already load-on-demand via Ollama — this
+   policy is for the lens's continuous modes. Same rule as the doc-018
+   contention protocol: nothing holds VRAM without an active reason.
+
+   **Settings — new "Vision" group** (extends existing
+   `vision_enabled`/`vision_model` keys in `src/settings.py`):
+   `lens_synced_model` (default e2b), `lens_snapshot_model` (default
+   12b), `lens_max_fps` (2/1/0.5/0.2/manual), `lens_output_tokens`
+   (40), `lens_frame_resolution` (512), `lens_image_token_budget`
+   (lab-only until Ollama exposes it), `lens_keepalive_minutes` +
+   `lens_unload_on_close`, `lens_standing_prompt`.
+
    Shared: cadence dial caps each loop (requested-vs-achieved readout —
    also our latency instrument); drop-frames-never-queue; standing
    prompt; lean stateless frame endpoint (no session, no history, no
