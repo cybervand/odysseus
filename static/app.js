@@ -297,25 +297,42 @@ function initializeEventListeners() {
   (function initCommandToggles() {
     const THINK_KEY = 'odysseus-think-mode';
     const EFFORT_KEY = 'odysseus-reasoning-effort';
-    const thinkBtn = el('cmd-think-toggle'), thinkState = el('cmd-think-state');
+    const cmdBtn = el('cmd-menu-btn'), cmdMenu = el('cmd-menu');
+    const thinkPill = el('cmd-think-pill');
     const stepper = el('cmd-effort-stepper'), effortState = el('cmd-effort-state');
-    const verBtn = el('cmd-verifier-toggle'), verState = el('cmd-verifier-state');
-    if (!thinkBtn || !stepper || !verBtn) return;
-    const THINK_STATES = ['auto', 'off', 'on'];
+    const verPill = el('cmd-verifier-pill');
+    if (!cmdBtn || !cmdMenu || !thinkPill || !stepper || !verPill) return;
+    // Popup open/close (own menu — items never auto-close it)
+    cmdBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cmdMenu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', (e) => {
+      if (!cmdMenu.classList.contains('hidden') && !cmdMenu.contains(e.target) && !cmdBtn.contains(e.target)) {
+        cmdMenu.classList.add('hidden');
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') cmdMenu.classList.add('hidden');
+    });
     const EFFORT_STATES = ['default', 'low', 'medium', 'high'];
     const steps = Array.from(stepper.querySelectorAll('.cmd-step'));
     const _cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
     const renderLocal = () => {
-      thinkState.textContent = localStorage.getItem(THINK_KEY) || 'auto';
+      // Thinking pill: colored = allowed (auto per-model policy), grey = off.
+      // Legacy stored 'on' counts as allowed.
+      const thinkOn = (localStorage.getItem(THINK_KEY) || 'auto') !== 'off';
+      thinkPill.classList.toggle('on', thinkOn);
+      thinkPill.setAttribute('aria-checked', String(thinkOn));
       const eff = localStorage.getItem(EFFORT_KEY) || 'default';
-      effortState.textContent = _cap(eff);
+      effortState.textContent = '(' + _cap(eff) + ')';
       const idx = Math.max(0, EFFORT_STATES.indexOf(eff));
       steps.forEach((s, i) => s.classList.toggle('active', i === idx));
     };
     renderLocal();
-    thinkBtn.addEventListener('click', () => {
-      const cur = localStorage.getItem(THINK_KEY) || 'auto';
-      localStorage.setItem(THINK_KEY, THINK_STATES[(THINK_STATES.indexOf(cur) + 1) % THINK_STATES.length]);
+    thinkPill.addEventListener('click', () => {
+      const on = (localStorage.getItem(THINK_KEY) || 'auto') !== 'off';
+      localStorage.setItem(THINK_KEY, on ? 'off' : 'auto');
       renderLocal();
     });
     // Stepped effort selector (throttle-with-detents): tap a dot or drag
@@ -342,16 +359,20 @@ function initializeEventListeners() {
       if (e.buttons) setEffort(idxFromEvent(e));
     });
     let verVal = null;
+    const renderVerifier = () => {
+      verPill.classList.toggle('on', verVal === true);
+      verPill.setAttribute('aria-checked', String(verVal === true));
+    };
     const refreshVerifier = async () => {
       try {
         const r = await fetch('/api/settings', { credentials: 'same-origin' });
         const s = await r.json();
         verVal = !!s.agent_verifier_subagent;
-        verState.textContent = verVal ? 'on' : 'off';
-      } catch (_) { verState.textContent = '?'; }
+      } catch (_) { verVal = null; }
+      renderVerifier();
     };
     refreshVerifier();
-    verBtn.addEventListener('click', async () => {
+    verPill.addEventListener('click', async () => {
       if (verVal === null) { await refreshVerifier(); if (verVal === null) return; }
       try {
         const r = await fetch('/api/settings', {
@@ -360,7 +381,7 @@ function initializeEventListeners() {
           credentials: 'same-origin',
           body: JSON.stringify({ agent_verifier_subagent: !verVal }),
         });
-        if (r.ok) { verVal = !verVal; verState.textContent = verVal ? 'on' : 'off'; }
+        if (r.ok) { verVal = !verVal; renderVerifier(); }
       } catch (_) {}
     });
   })();
