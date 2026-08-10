@@ -41206,7 +41206,21 @@ body.theme-frosted .modal {
   gap: 14px;
   margin-left: auto;
   padding: 6px 4px;
+  position: relative;
   touch-action: none; /* enables drag-snap on mobile without scrolling */
+}
+/* The rail: a line intersecting every stop, handle rides on it */
+.cmd-stepper::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 1px;
+  pointer-events: none;
 }
 .cmd-step {
   width: 7px;
@@ -41214,8 +41228,10 @@ body.theme-frosted .modal {
   border-radius: 50%;
   border: none;
   padding: 0;
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.55);
   cursor: pointer;
+  position: relative;
+  z-index: 1;
   transition: transform 0.15s ease, background 0.15s ease;
 }
 .cmd-step.active {
