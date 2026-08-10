@@ -67,12 +67,13 @@ tests.
    — on the mounted data volume, so it survives deploys) and an
    `ODYSSEUS_BROWSER_MCP_REQUIRE_CACHE` no-network mode. So this is an
    *enablement + bridging* project, not a build:
-   - **Phase A (enable):** check whether prod's `builtin_browser`
-     connects (the imgtest failure was fresh-data cold cache); prime
-     the cache once via the doc-015 toolchain tier (`npx -y
-     @playwright/mcp --version` + chromium download, ~300 MB, as
-     uid 99); watch container RAM — headless chromium adds
-     200–400 MB/page on a 32 GB box.
+   - **Phase A (enable): ALREADY DONE IN PROD** (verified 2026-08-10
+     post-vision1-deploy): `Built-in: Browser` connects with **30
+     tools via stdio**, using the image's system chromium
+     (`--executable-path /usr/bin/chromium --isolated --no-sandbox`) —
+     no download, no cache priming needed. The imgtest failure was
+     fresh-data cold cache only. The models have had a working browser
+     all along; what's missing is only the bridge to their eyes.
    - **Phase B (the eyes loop):** `--caps vision` returns screenshots
      as MCP image content; bridge them into the upload store →
      attachment id → **vision injection** (shared mechanism with
