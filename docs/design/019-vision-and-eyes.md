@@ -72,6 +72,24 @@ tests.
    fixes (move manifest resolution off the event loop, batch index
    writes). Gives agents access to chat attachments; composes with the
    rehydrator.
+4. **Live lens (camera, stateless — no storage):** phone camera →
+   frame every ~5 s → standing prompt → answer overlay; frames are
+   never persisted. Three tiers, all real on this hardware:
+   (a) YOLO-class detector for continuous class labels (ms/frame,
+   <1 GB — the cheap gate deciding when the expensive tier runs, the
+   doc-018 router pattern wearing a camera); (b) still-frame gemma4 via
+   Ollama (~3–5 s/frame estimated — measure); (c) **temporal video via
+   the lab transformers harness**: Gemma 4's native video input is
+   timestamped frame sequences through `AutoProcessor` — transformers-
+   only (Ollama hasn't shipped video input as of v0.32.6), i.e. the
+   virtual-experts-lab serving pattern extends to it (12B quantized,
+   sharded, one lab experiment resident at a time). A sliding window of
+   live frames stamped 00:00…00:25 gives real temporal context today.
+   Per-frame token cost undocumented — measure prefill before promising
+   cadence. Blockers for the phone: getUserMedia requires HTTPS → the
+   dead Tailscale sidecar needs a fresh TS_AUTHKEY (user-held).
+   Wire-color-style readings are assistive only — never for live
+   electrical work.
 
 ## Decision log
 
