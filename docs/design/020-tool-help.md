@@ -41,18 +41,33 @@ wrapper, every tool.
    1–2 canonical examples. The model needs no initiative — the help
    arrives because it stumbled. This layer alone addresses the
    observed failure families.
-2. **Explicit `help` (uniform convention).** Action-style tools accept
-   `action: "help"`; non-action tools accept `{"help": true}`. Both
-   return the full manual. Implemented in the same wrapper — the
-   request never reaches the implementation. The doc-017 open item
+2. **Explicit `help` — hierarchical and terse, like human CLI help
+   (user requirement 2026-08-10).** Two scopes, mirroring
+   `git help` / `git commit --help`, an idiom every model already
+   knows from CLI corpora:
+   - **Tool level** — `manage_server {action:"help"}` → a ~10-line
+     synopsis: one line per action (`edit NAME … — change config`),
+     ending with `help ACTION for details`. Never the full manual.
+   - **Action level** — `{action:"help", topic:"edit"}` → only that
+     action: required args, optional args, one canonical example.
+     ~8 lines.
+   The wrapper accepts the spellings models actually guess
+   (`{action:"edit", help:true}`, `{action:"help edit"}`, bare
+   `{"help": true}` on non-action tools) — a guessed help spelling
+   must land on help, never on an error. The doc-017 open item
    (rollout to other `manage_*` tools) closes as a side effect.
-3. **Manual generation (single source of truth).** Manuals are
+   **Brevity is load-bearing, not style:** a wall-of-manual eats the
+   small-model context budget that caused the fumbling in the first
+   place; scoped help returns only the level asked for.
+3. **Manual generation (single source of truth).** Help text is
    *rendered from the tool's JSON schema* (params, types, enums,
-   required flags) so they can never drift from reality, plus a new
-   curated `EXAMPLES` registry (1–2 canonical calls per tool — the
+   required flags) so it can never drift from reality, plus a new
+   curated `EXAMPLES` registry (1–2 canonical calls per action — the
    teaching gold; schemas describe shape, examples teach usage).
    Rendered compactly and cached; no LLM in the loop — help must be
-   deterministic, instant, and free.
+   deterministic, instant, and free. Error-as-teaching (layer 1)
+   reuses the same renderer at the same scope: a failed `edit` call
+   returns *edit's* action-level help, not the tool manual.
 
 ### Dialect-aware examples (the fork specialty)
 
