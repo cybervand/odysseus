@@ -954,7 +954,17 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     const queuedText = (queuedInput && queuedInput.value || '').trim();
     if (!queuedText) return false;
     if (fileHandlerModule.getPendingCount && fileHandlerModule.getPendingCount()) {
-      try { uiModule.showError && uiModule.showError('Finish the current response before queueing messages with attachments.'); } catch (_) {}
+      // Before refusing, verify the stream is actually alive server-side —
+      // a stuck isStreaming (dropped SSE close) otherwise blocks attachment
+      // sends forever. If the server says idle, unlock and resend as normal.
+      _reconcileComposerLock().then((unlocked) => {
+        if (unlocked) {
+          const btn = document.querySelector('.send-btn');
+          if (btn) btn.click();  // composer intact: text + attachments still pending
+        } else {
+          try { uiModule.showError && uiModule.showError('Finish the current response before queueing messages with attachments.'); } catch (_) {}
+        }
+      });
       return true;
     }
     if (_queueAgentRequest(queuedText)) {
@@ -962,6 +972,11 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       queuedInput.dispatchEvent(new Event('input', { bubbles: true }));
       if (uiModule.autoResize) uiModule.autoResize(queuedInput);
       try { window._updateSendBtnIcon && window._updateSendBtnIcon(); } catch (_) {}
+      // Same stale-stream hazard for queued text: if the server is actually
+      // idle, unlock now so the drain timer sends it immediately.
+      _reconcileComposerLock().then((unlocked) => {
+        if (unlocked) _drainQueuedAgentRequests();
+      });
     }
     return true;
   }
@@ -4252,33 +4267,69 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       }
 
       console.warn('[stream-watchdog] Local stream was stale and server has no active stream. Unlocking composer.');
-      if (active.abortCtrl && !active.abortCtrl.signal.aborted) {
-        active.abortCtrl._reason = 'stale-local';
-        active.abortCtrl.abort();
-      }
-      _activeStreams.delete(sid);
-      _syncForegroundStreamGlobals();
-      _sendInFlight = false;
-      if (_webLockRelease) {
-        _webLockRelease();
-        _webLockRelease = null;
-      }
-      const submitBtn = document.querySelector('.send-btn');
-      if (submitBtn) updateSubmitButton('idle', submitBtn);
-      const messageInput = uiModule.el('message');
-      if (messageInput) messageInput.disabled = false;
-      _drainQueuedAgentRequests();
-      // The turn finished server-side while our reader was dead — the full
-      // transcript is already persisted. Reload it so the user is not left
-      // staring at a half-rendered turn until a manual refresh.
-      if (sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === sid) {
-        sessionModule.selectSession(sid);
-      }
+      _unlockDeadLocalStream(sid, active, true);
     } catch (err) {
       console.warn('[stream-watchdog] Stream status probe failed:', err);
     } finally {
       _staleStreamProbeInFlight = false;
     }
+  }
+
+  /** Tear down a local stream whose server run no longer exists, restoring
+   *  the composer. reloadTranscript re-pulls history for half-rendered
+   *  turns; callers whose turn rendered fully pass false. */
+  function _unlockDeadLocalStream(sid, active, reloadTranscript) {
+    if (active && active.abortCtrl && !active.abortCtrl.signal.aborted) {
+      active.abortCtrl._reason = 'stale-local';
+      active.abortCtrl.abort();
+    }
+    _activeStreams.delete(sid);
+    _syncForegroundStreamGlobals();
+    _sendInFlight = false;
+    if (_webLockRelease) {
+      _webLockRelease();
+      _webLockRelease = null;
+    }
+    const submitBtn = document.querySelector('.send-btn');
+    if (submitBtn) updateSubmitButton('idle', submitBtn);
+    const messageInput = uiModule.el('message');
+    if (messageInput) messageInput.disabled = false;
+    _drainQueuedAgentRequests();
+    // The turn finished server-side while our reader was dead — the full
+    // transcript is already persisted. Reload it so the user is not left
+    // staring at a half-rendered turn until a manual refresh.
+    if (reloadTranscript && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === sid) {
+      sessionModule.selectSession(sid);
+    }
+  }
+
+  /** Ask the server whether the current session's stream is actually alive.
+   *  A dropped SSE close (mobile / Tailscale) can leave isStreaming stuck
+   *  with the watchdog sidestepped (seen 2026-08-10: composer refused an
+   *  attachment minutes after the answer finished). Returns true when the
+   *  composer was unlocked. */
+  async function _reconcileComposerLock() {
+    const sid = sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId();
+    if (!sid) return false;
+    let status;
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/stream_status/${encodeURIComponent(sid)}`, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      status = res.status;
+    } catch (_) {
+      return false;
+    }
+    if (status !== 404) return false;  // server really owns a live run
+    _backgroundStreams.delete(sid);    // a leaked bg entry must not re-lock
+    const active = _getForegroundStreamState();
+    if (active) {
+      _unlockDeadLocalStream(sid, active, false);  // turn already rendered
+    } else {
+      _syncForegroundStreamGlobals();
+    }
+    return !isStreaming;
   }
 
   function _startStallWatchdog() {
