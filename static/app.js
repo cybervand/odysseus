@@ -298,30 +298,48 @@ function initializeEventListeners() {
     const THINK_KEY = 'odysseus-think-mode';
     const EFFORT_KEY = 'odysseus-reasoning-effort';
     const thinkBtn = el('cmd-think-toggle'), thinkState = el('cmd-think-state');
-    const effortSlider = el('cmd-effort-slider'), effortState = el('cmd-effort-state');
+    const stepper = el('cmd-effort-stepper'), effortState = el('cmd-effort-state');
     const verBtn = el('cmd-verifier-toggle'), verState = el('cmd-verifier-state');
-    if (!thinkBtn || !effortSlider || !verBtn) return;
+    if (!thinkBtn || !stepper || !verBtn) return;
     const THINK_STATES = ['auto', 'off', 'on'];
     const EFFORT_STATES = ['default', 'low', 'medium', 'high'];
+    const steps = Array.from(stepper.querySelectorAll('.cmd-step'));
     const _cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
     const renderLocal = () => {
       thinkState.textContent = localStorage.getItem(THINK_KEY) || 'auto';
       const eff = localStorage.getItem(EFFORT_KEY) || 'default';
       effortState.textContent = _cap(eff);
-      const idx = EFFORT_STATES.indexOf(eff);
-      effortSlider.value = String(idx >= 0 ? idx : 0);
+      const idx = Math.max(0, EFFORT_STATES.indexOf(eff));
+      steps.forEach((s, i) => s.classList.toggle('active', i === idx));
     };
     renderLocal();
     thinkBtn.addEventListener('click', () => {
       const cur = localStorage.getItem(THINK_KEY) || 'auto';
-      const next = THINK_STATES[(THINK_STATES.indexOf(cur) + 1) % THINK_STATES.length];
-      localStorage.setItem(THINK_KEY, next);
+      localStorage.setItem(THINK_KEY, THINK_STATES[(THINK_STATES.indexOf(cur) + 1) % THINK_STATES.length]);
       renderLocal();
     });
-    effortSlider.addEventListener('input', () => {
-      const idx = Math.min(3, Math.max(0, parseInt(effortSlider.value, 10) || 0));
-      localStorage.setItem(EFFORT_KEY, EFFORT_STATES[idx]);
-      renderLocal();
+    // Stepped effort selector (throttle-with-detents): tap a dot or drag
+    // across; position snaps to the nearest stop. State only changes at
+    // step boundaries and rendering only swaps classes — no flicker.
+    const setEffort = (idx) => {
+      const clamped = Math.min(EFFORT_STATES.length - 1, Math.max(0, idx));
+      if ((localStorage.getItem(EFFORT_KEY) || 'default') !== EFFORT_STATES[clamped]) {
+        localStorage.setItem(EFFORT_KEY, EFFORT_STATES[clamped]);
+        renderLocal();
+      }
+    };
+    steps.forEach((s, i) => s.addEventListener('click', () => setEffort(i)));
+    const idxFromEvent = (e) => {
+      const r = stepper.getBoundingClientRect();
+      const frac = (e.clientX - r.left) / Math.max(1, r.width);
+      return Math.round(frac * (EFFORT_STATES.length - 1));
+    };
+    stepper.addEventListener('pointerdown', (e) => {
+      try { stepper.setPointerCapture(e.pointerId); } catch (_) {}
+      setEffort(idxFromEvent(e));
+    });
+    stepper.addEventListener('pointermove', (e) => {
+      if (e.buttons) setEffort(idxFromEvent(e));
     });
     let verVal = null;
     const refreshVerifier = async () => {

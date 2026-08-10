@@ -41198,12 +41198,28 @@ body.theme-frosted .modal {
   .compare-pane { min-height: 60dvh; }
 }
 
-/* Command-menu reasoning slider (discrete 4-stop range) */
+/* Command-menu stepped effort selector (throttle-with-detents) */
 #cmd-effort-row { display: flex; align-items: center; gap: 8px; cursor: default; }
-#cmd-effort-row .cmd-slider {
-  accent-color: #8b7cf8;
-  width: 92px;
-  min-width: 92px;
+.cmd-stepper {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   margin-left: auto;
-  cursor: pointer;
+  padding: 6px 4px;
+  touch-action: none; /* enables drag-snap on mobile without scrolling */
 }
+.cmd-step {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.cmd-step.active {
+  transform: scale(2.1);
+  background: #e8e6f5;
+}
+.cmd-step:last-child:not(.active) { background: #8b7cf8; }

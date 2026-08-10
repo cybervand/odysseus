@@ -1117,7 +1117,12 @@
               <div class="overflow-menu-item" data-stay-open="1" id="cmd-effort-row" title="Reasoning effort for models that take a level (gpt-oss etc.)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 <span>Reasoning (<b id="cmd-effort-state">Default</b>)</span>
-                <input type="range" id="cmd-effort-slider" class="cmd-slider" min="0" max="3" step="1" value="0" aria-label="Reasoning effort" />
+                <div class="cmd-stepper" id="cmd-effort-stepper" role="radiogroup" aria-label="Reasoning effort">
+                  <button type="button" class="cmd-step" data-idx="0" aria-label="Default"></button>
+                  <button type="button" class="cmd-step" data-idx="1" aria-label="Low"></button>
+                  <button type="button" class="cmd-step" data-idx="2" aria-label="Medium"></button>
+                  <button type="button" class="cmd-step" data-idx="3" aria-label="High"></button>
+                </div>
               </div>
               <button type="button" class="overflow-menu-item" id="overflow-doc-btn">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
