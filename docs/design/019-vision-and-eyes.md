@@ -91,12 +91,28 @@ tests.
      IS the model's view, so display and analysis cannot disagree.
      Self-pacing: cadence = achieved processing rate.
 
+   **Measured (2026-08-10, lean endpoint, Ollama native /api/chat,
+   512px frame, `think: false`, num_predict 40, warm):**
+   `gemma4:e2b` **0.52 s/frame → 1.9 fps** ("Triangle red, circle
+   yellow." — correct); `gemma4:12b-it-q8_0` **1.24 s/frame →
+   0.81 fps** (full correct sentence); `gemma4:e4b` **crashes
+   llama-server on vision** (`GGML_ASSERT(n_inputs < GGML_SCHED_MAX…)`,
+   Ollama v0.32.5 — retest after upgrading to ≥v0.32.6, user-held
+   Unraid recreate). Two hard-won gotchas: **`think: false` is
+   mandatory** — with thinking on, the whole token budget disappears
+   into the reasoning channel and `content` returns empty; and the
+   earlier 3–5 s estimate was chat-pipeline overhead, not the model —
+   the lean endpoint is 3–6× faster. Consequence: E2B is the synced-
+   mode workhorse (~2 fps), 12B the snapshot-mode describer (~1.2 s),
+   and the in-browser detector tier is optional rather than
+   load-bearing at these speeds.
+
    Shared: cadence dial caps each loop (requested-vs-achieved readout —
    also our latency instrument); drop-frames-never-queue; standing
    prompt; lean stateless frame endpoint (no session, no history, no
    persistence). Tier ladder behind it: (a) in-browser detector,
-   (b) still-frame gemma4 via Ollama (~3–5 s/frame estimated —
-   measure), (c) **temporal video via the lab transformers harness**:
+   (b) still-frame gemma4 via Ollama (measured above),
+   (c) **temporal video via the lab transformers harness**:
    Gemma 4's native video input is timestamped frame sequences through
    `AutoProcessor` — transformers-only (Ollama hasn't shipped video
    input as of v0.32.6), so the virtual-experts-lab serving pattern
