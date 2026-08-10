@@ -280,6 +280,18 @@ function initializeEventListeners() {
     if (ta) setTimeout(() => ta.focus(), 100);
   });
 
+  // Camera capture (phones open the camera app directly via the input's
+  // accept+capture attrs; desktop degrades to an image picker)
+  const _overflowCamera = el('overflow-camera-btn');
+  if (_overflowCamera) _overflowCamera.addEventListener('click', ()=> el('camera-input').click());
+  const _cameraInput = el('camera-input');
+  if (_cameraInput) _cameraInput.addEventListener('change', async (e)=>{
+    await fileHandlerModule.addFiles(Array.from(e.target.files || []));
+    e.target.value = '';
+    const ta = el('message');
+    if (ta) setTimeout(() => ta.focus(), 100);
+  });
+
   // Paste handler
   window.addEventListener('paste', async (e)=>{
     if (!e.clipboardData) return;
