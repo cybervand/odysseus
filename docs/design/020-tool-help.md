@@ -69,6 +69,23 @@ wrapper, every tool.
    reuses the same renderer at the same scope: a failed `edit` call
    returns *edit's* action-level help, not the tool manual.
 
+### Human entry point (user requirement 2026-08-10)
+
+Humans get the same help through the existing slash-command surface
+(doc 017): `/help manage_server` → the tool-level synopsis;
+`/help manage_server edit` → the action-level detail; bare `/help` →
+the tool categories with one-liners, not 73 rows. Parsing is
+forgiving the same way the model side is — `Manage_server / help`,
+stray capitals, stray spaces all resolve. **Same renderer, same
+scopes, one source of truth** — a human and a model asking about
+`edit` read the identical eight lines, so what the user learns is
+exactly what their models are being taught. Two presentation
+differences only: human help renders plain argument names (the
+dialect-shaped examples are model-side — humans never see qwen wire
+format), and the reply persists as `source: "slash"`, which the
+existing context filter already excludes from model history — help
+browsing costs the model zero context.
+
 ### Dialect-aware examples (the fork specialty)
 
 Examples are rendered through `dialect_profiles` so the model sees
