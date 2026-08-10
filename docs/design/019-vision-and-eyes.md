@@ -93,18 +93,24 @@ tests.
 
    **Measured (2026-08-10, lean endpoint, Ollama native /api/chat,
    512px frame, `think: false`, num_predict 40, warm):**
-   `gemma4:e2b` **0.52 s/frame → 1.9 fps** ("Triangle red, circle
-   yellow." — correct); `gemma4:12b-it-q8_0` **1.24 s/frame →
-   0.81 fps** (full correct sentence); `gemma4:e4b` **crashes
-   llama-server on vision** (`GGML_ASSERT(n_inputs < GGML_SCHED_MAX…)`,
-   Ollama v0.32.5 — retest after upgrading to ≥v0.32.6, user-held
-   Unraid recreate). Two hard-won gotchas: **`think: false` is
-   mandatory** — with thinking on, the whole token budget disappears
-   into the reasoning channel and `content` returns empty; and the
-   earlier 3–5 s estimate was chat-pipeline overhead, not the model —
-   the lean endpoint is 3–6× faster. Consequence: E2B is the synced-
-   mode workhorse (~2 fps), 12B the snapshot-mode describer (~1.2 s),
-   and the in-browser detector tier is optional rather than
+   `gemma4:e2b` **0.51 s/frame → 2.0 fps** ("Triangle red, circle
+   yellow." — correct; active footprint only **1.7 GB** — co-resides
+   with anything); `gemma4:e4b` **0.62 s/frame → 1.7 fps** (4.4 GB
+   active; crashed llama-server on v0.32.5's vision path
+   [`GGML_ASSERT(n_inputs…)`] — **fixed by the 2026-08-10 upgrade to
+   v0.32.6**); `gemma4:12b-it-q8_0` **1.22 s/frame → 0.82 fps** (full
+   correct sentence, 14 GB resident). Three hard-won gotchas:
+   **`think: false` is mandatory** — with thinking on, the whole token
+   budget disappears into the reasoning channel and `content` returns
+   empty; the earlier 3–5 s estimate was chat-pipeline overhead, not
+   the model — the lean endpoint is 3–6× faster; and **load order
+   matters** — a model loaded while VRAM is scarce keeps its degraded
+   CPU/GPU split (12B: 3.0 s at 21% CPU) until *explicitly unloaded and
+   reloaded* — evicting the other models does not rebalance it. The
+   lens must load the big model first or stop/start on mode switch.
+   Consequence: E2B is the synced-mode workhorse (~2 fps), E4B the
+   quality-vs-speed middle rung, 12B the snapshot-mode describer
+   (~1.2 s), and the in-browser detector tier is optional rather than
    load-bearing at these speeds.
 
    Shared: cadence dial caps each loop (requested-vs-achieved readout —
