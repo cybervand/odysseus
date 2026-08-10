@@ -298,24 +298,31 @@ function initializeEventListeners() {
     const THINK_KEY = 'odysseus-think-mode';
     const EFFORT_KEY = 'odysseus-reasoning-effort';
     const thinkBtn = el('cmd-think-toggle'), thinkState = el('cmd-think-state');
-    const effortBtn = el('cmd-effort-toggle'), effortState = el('cmd-effort-state');
+    const effortSlider = el('cmd-effort-slider'), effortState = el('cmd-effort-state');
     const verBtn = el('cmd-verifier-toggle'), verState = el('cmd-verifier-state');
-    if (!thinkBtn || !effortBtn || !verBtn) return;
+    if (!thinkBtn || !effortSlider || !verBtn) return;
     const THINK_STATES = ['auto', 'off', 'on'];
     const EFFORT_STATES = ['default', 'low', 'medium', 'high'];
+    const _cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
     const renderLocal = () => {
       thinkState.textContent = localStorage.getItem(THINK_KEY) || 'auto';
-      effortState.textContent = localStorage.getItem(EFFORT_KEY) || 'default';
+      const eff = localStorage.getItem(EFFORT_KEY) || 'default';
+      effortState.textContent = _cap(eff);
+      const idx = EFFORT_STATES.indexOf(eff);
+      effortSlider.value = String(idx >= 0 ? idx : 0);
     };
     renderLocal();
-    const cycle = (key, states) => {
-      const cur = localStorage.getItem(key) || states[0];
-      const next = states[(states.indexOf(cur) + 1) % states.length];
-      localStorage.setItem(key, next);
+    thinkBtn.addEventListener('click', () => {
+      const cur = localStorage.getItem(THINK_KEY) || 'auto';
+      const next = THINK_STATES[(THINK_STATES.indexOf(cur) + 1) % THINK_STATES.length];
+      localStorage.setItem(THINK_KEY, next);
       renderLocal();
-    };
-    thinkBtn.addEventListener('click', () => cycle(THINK_KEY, THINK_STATES));
-    effortBtn.addEventListener('click', () => cycle(EFFORT_KEY, EFFORT_STATES));
+    });
+    effortSlider.addEventListener('input', () => {
+      const idx = Math.min(3, Math.max(0, parseInt(effortSlider.value, 10) || 0));
+      localStorage.setItem(EFFORT_KEY, EFFORT_STATES[idx]);
+      renderLocal();
+    });
     let verVal = null;
     const refreshVerifier = async () => {
       try {
@@ -2268,10 +2275,11 @@ function initializeEventListeners() {
     // so tapping an item (e.g. Attach files) doesn't steal focus from the message
     // box — keeps the mobile keyboard up.
     menu.querySelectorAll('.overflow-menu-item').forEach(item => {
-      item.addEventListener('pointerdown', (e) => { e.preventDefault(); });
-      // data-stay-open items are cycling toggles (command menu) — keep the
-      // menu up so several can be adjusted in one visit.
+      // data-stay-open items are command-menu toggles/sliders — keep the
+      // menu up so several can be adjusted in one visit, and skip the
+      // pointerdown preventDefault (it would break range-slider dragging).
       if (item.dataset.stayOpen) return;
+      item.addEventListener('pointerdown', (e) => { e.preventDefault(); });
       item.addEventListener('click', () => closeOverflowMenu());
     });
     document.addEventListener('click', (e) => {
