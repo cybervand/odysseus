@@ -107,6 +107,12 @@ DEFAULT_SETTINGS = {
     "research_run_timeout_seconds": 1800,
     "agent_max_tool_calls": 0,
     "agent_max_rounds": 20,  # per-message agent step cap (clamped 1..200)
+    # Independent completion verifier after agent runs (agent_loop reads
+    # this at the completion-claim gate). Was settable only by editing
+    # data/settings.json — absent from this dict, the POST /api/settings
+    # whitelist silently dropped every UI write (command-menu pill bug,
+    # 2026-08-11). Default off: an attended chat has a human verifier.
+    "agent_verifier_subagent": False,
     # Soft input-token budget for the agent loop. The DEFAULT value (6000) is the
     # "auto" sentinel: it means "scale the budget to the model's context window"
     # (#1230) — so long-context models aren't capped at 6000. Set ANY OTHER value

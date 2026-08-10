@@ -298,10 +298,10 @@ function initializeEventListeners() {
     const THINK_KEY = 'odysseus-think-mode';
     const EFFORT_KEY = 'odysseus-reasoning-effort';
     const cmdBtn = el('cmd-menu-btn'), cmdMenu = el('cmd-menu');
-    const thinkPill = el('cmd-think-pill');
+    const thinkCheck = el('cmd-think-check');
     const stepper = el('cmd-effort-stepper'), effortState = el('cmd-effort-state');
-    const verPill = el('cmd-verifier-pill');
-    if (!cmdBtn || !cmdMenu || !thinkPill || !stepper || !verPill) return;
+    const verCheck = el('cmd-verifier-check');
+    if (!cmdBtn || !cmdMenu || !thinkCheck || !stepper || !verCheck) return;
     // Popup open/close (own menu — items never auto-close it)
     cmdBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -319,21 +319,17 @@ function initializeEventListeners() {
     const steps = Array.from(stepper.querySelectorAll('.cmd-step'));
     const _cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
     const renderLocal = () => {
-      // Thinking pill: colored = allowed (auto per-model policy), grey = off.
-      // Legacy stored 'on' counts as allowed.
-      const thinkOn = (localStorage.getItem(THINK_KEY) || 'auto') !== 'off';
-      thinkPill.classList.toggle('on', thinkOn);
-      thinkPill.setAttribute('aria-checked', String(thinkOn));
+      // Thinking switch: on = allowed (auto per-model policy), off =
+      // suppressed. Legacy stored 'on' counts as allowed.
+      thinkCheck.checked = (localStorage.getItem(THINK_KEY) || 'auto') !== 'off';
       const eff = localStorage.getItem(EFFORT_KEY) || 'default';
       effortState.textContent = '(' + _cap(eff) + ')';
       const idx = Math.max(0, EFFORT_STATES.indexOf(eff));
       steps.forEach((s, i) => s.classList.toggle('active', i === idx));
     };
     renderLocal();
-    thinkPill.addEventListener('click', () => {
-      const on = (localStorage.getItem(THINK_KEY) || 'auto') !== 'off';
-      localStorage.setItem(THINK_KEY, on ? 'off' : 'auto');
-      renderLocal();
+    thinkCheck.addEventListener('change', () => {
+      localStorage.setItem(THINK_KEY, thinkCheck.checked ? 'auto' : 'off');
     });
     // Stepped effort selector (throttle-with-detents): tap a dot or drag
     // across; position snaps to the nearest stop. State only changes at
@@ -358,31 +354,25 @@ function initializeEventListeners() {
     stepper.addEventListener('pointermove', (e) => {
       if (e.buttons) setEffort(idxFromEvent(e));
     });
-    let verVal = null;
-    const renderVerifier = () => {
-      verPill.classList.toggle('on', verVal === true);
-      verPill.setAttribute('aria-checked', String(verVal === true));
-    };
     const refreshVerifier = async () => {
       try {
         const r = await fetch('/api/settings', { credentials: 'same-origin' });
         const s = await r.json();
-        verVal = !!s.agent_verifier_subagent;
-      } catch (_) { verVal = null; }
-      renderVerifier();
+        verCheck.checked = !!s.agent_verifier_subagent;
+      } catch (_) {}
     };
     refreshVerifier();
-    verPill.addEventListener('click', async () => {
-      if (verVal === null) { await refreshVerifier(); if (verVal === null) return; }
+    verCheck.addEventListener('change', async () => {
+      const want = verCheck.checked;
       try {
         const r = await fetch('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({ agent_verifier_subagent: !verVal }),
+          body: JSON.stringify({ agent_verifier_subagent: want }),
         });
-        if (r.ok) { verVal = !verVal; renderVerifier(); }
-      } catch (_) {}
+        if (!r.ok) verCheck.checked = !want;  // revert on refusal
+      } catch (_) { verCheck.checked = !want; }
     });
   })();
 
