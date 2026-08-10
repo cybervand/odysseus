@@ -817,6 +817,24 @@ async def build_chat_context(
     # stale normal session id. Only the ephemeral incognito transcript is safe.
     messages = preface + (_incognito_messages(session_id) if incognito else sess.get_context_messages())
 
+    # Reloaded sessions carry images only as flattened attachment-ref text
+    # (upstream #5420); a vision model then invents the picture from its
+    # filename instead of saying it can't see it (upstream #5499/#4723,
+    # reproduced 2026-08-10). Re-attach the persisted uploads for vision
+    # models so replayed turns keep their pixels.
+    if not incognito:
+        try:
+            from src.chat_helpers import model_supports_vision
+            from src.attachment_rehydrate import rehydrate_history_images
+            _uh = getattr(chat_handler, "upload_handler", None)
+            if _uh is not None and await asyncio.to_thread(
+                model_supports_vision, sess.model or "",
+                getattr(sess, "endpoint_url", "") or "",
+            ):
+                rehydrate_history_images(messages, _uh, owner=user)
+        except Exception:
+            logger.warning("history image rehydration failed", exc_info=True)
+
     # Current date/time — injected as a standalone *user*-role context message
     # placed immediately before the latest user turn, NOT folded into the
     # system prompt. Its text changes every minute, and local OpenAI-compatible
