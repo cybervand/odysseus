@@ -266,6 +266,17 @@ async function _createDirectChatFromPreferredModel() {
 // EVENT LISTENERS INITIALIZATION
 // ============================================
 function initializeEventListeners() {
+  // Restore the last picked model route across page reloads. The send path
+  // honors it for 10 minutes (chat.js selectedRouteForSend); without this,
+  // a mobile tab reload wiped the pick and new chats fell back to the
+  // default model.
+  try {
+    if (!window.__odysseusLastPickedRoute) {
+      const savedRoute = JSON.parse(localStorage.getItem('odysseus-last-picked-route') || 'null');
+      if (savedRoute && savedRoute.model) window.__odysseusLastPickedRoute = savedRoute;
+    }
+  } catch (_) {}
+
   // Chat form submission
 //  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
 
@@ -4522,24 +4533,10 @@ function startOdysseusApp() {
 	      }
 	      refreshing = true;
 	      setPull(THRESHOLD, true);
-	      const safetyTimer = setTimeout(() => {
-	        refreshing = false;
-	        setPull(0, false);
-	      }, 8000);
-	      try {
-	        const sid = sessionModule && sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId();
-	        if (sid && sessionModule.selectSession) {
-	          await sessionModule.selectSession(sid, { keepSidebar: true, showLoading: false, immediateLoading: true });
-	        } else if (sessionModule && sessionModule.loadSessions) {
-	          await sessionModule.loadSessions();
-	        }
-	      } catch (err) {
-	        console.warn('pull refresh failed:', err);
-	      } finally {
-	        clearTimeout(safetyTimer);
-	        refreshing = false;
-	        setPull(0, false);
-	      }
+	      // Full browser reload — users expect pull-down to behave like the
+	      // browser gesture it replaces, and it also picks up freshly deployed
+	      // JS (a transcript-only re-render did neither; user report 2026-08-10).
+	      location.reload();
 	    }
 
 	    historyEl.addEventListener('touchstart', (e) => {

@@ -651,6 +651,12 @@ async function _pick(m) {
         display: m.display || m.mid || '',
         picked_at: Date.now(),
       };
+      // Persist across page reloads: mobile browsers discard backgrounded
+      // tabs constantly, and a pick living only in window memory silently
+      // reverted new chats to the default model (seen 2026-08-10 — picked
+      // e2b, got the qwen agent default after Android reloaded the tab).
+      localStorage.setItem('odysseus-last-picked-route',
+        JSON.stringify(window.__odysseusLastPickedRoute));
     } catch (_) {}
     let switchDone = null;
     const switchPromise = new Promise(resolve => { switchDone = resolve; });
