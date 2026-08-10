@@ -195,6 +195,22 @@ tests.
    sidecar needs a fresh TS_AUTHKEY (user-held). Wire-color-style
    readings are assistive only — never for live electrical work.
 
+5. **Verifier vs. vision (2026-08-10, user-spotted):** the completion
+   verifier is text-only by design (cold context, action record) — it
+   cannot check image-grounded claims and could fail correct visual
+   answers or invent its own image, burning re-verify rounds. Shipped
+   immediately: an epistemic-humility rule (visual requirements =
+   unverifiable → plausible-action-counts-as-MET, never guess pixels).
+   Roadmap: **vision-injected verification** — when the task hinges on
+   an image and a vision model is available, attach the actual image
+   blocks to the verifier call (the ebeac24a injection machinery);
+   verifier conflicts stay process-flags to the agent, never
+   user-facing truth. Related teaching gap: gemma4:e2b asked for an
+   "OCR tool" that deliberately doesn't exist — all three gemmas
+   advertise `vision`+`tools` in Ollama and read text in images
+   natively; a doc-020-style teaching line for vision-capable agent
+   models ("you have eyes; read the image directly") closes it.
+
 ## Decision log
 
 - 2026-08-10 — Upstream surveyed (nothing to pull; triage adopted);
