@@ -146,6 +146,28 @@ computations that fit inside a forward pass**. Anything with IO — files,
 servers, network — stays in the agent loop. This complements the doc
 001–017 harness; it does not replace it.
 
+**The guarantee, stated precisely (2026-08-10, after the user probed
+with the Einstein field equations in ASCII):** "can't be arithmetically
+wrong" does NOT mean "solves any math expressed in ASCII" — that is
+impossible for any system, not just ours (Richardson's theorem: even
+equality of elementary symbolic expressions is undecidable). The
+deliverable guarantee is narrower and therefore real: **every numeric
+digit the model commits to is computed, never sampled** — numeric
+claims are exact or absent. The model remains free to be wrong about
+physics, modeling, and symbol-pushing; those are not arithmetic errors.
+`G_mu_nu + Lambda*g_mu_nu = …` correctly routes neural (identifiers,
+verified live — the FP guards ARE the boundary enforcement); its
+numeric endpoints (`2*6.674e-11*1.989e30/299792458**2` → 2953.99 m,
+solar Schwarzschild radius) compute instantly today. Expert admission
+test distilled for any future plugin: **crisp trigger + canonical
+answer + zero false positives.** Arithmetic passes all three maximally;
+computer algebra (sympy — rearranging, differentiating, Christoffel
+symbols for a given metric) passes determinism but strains trigger
+(wall-to-wall identifiers) and canonicality (simplification is
+choice-laden) — a candidate expert, admitted only if it can pay the
+same FP bar; proof assistants verify rather than answer; the rest is
+judgment and stays neural.
+
 ## Phase 1 findings (2026-08-08 — completed in one evening, as budgeted)
 
 Lab: container `virtual-experts-lab` on copperwarehouse (pytorch image +
