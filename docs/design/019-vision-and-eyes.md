@@ -72,24 +72,41 @@ tests.
    fixes (move manifest resolution off the event loop, batch index
    writes). Gives agents access to chat attachments; composes with the
    rehydrator.
-4. **Live lens (camera, stateless — no storage):** phone camera →
-   frame every ~5 s → standing prompt → answer overlay; frames are
-   never persisted. Three tiers, all real on this hardware:
-   (a) YOLO-class detector for continuous class labels (ms/frame,
-   <1 GB — the cheap gate deciding when the expensive tier runs, the
-   doc-018 router pattern wearing a camera); (b) still-frame gemma4 via
-   Ollama (~3–5 s/frame estimated — measure); (c) **temporal video via
-   the lab transformers harness**: Gemma 4's native video input is
-   timestamped frame sequences through `AutoProcessor` — transformers-
-   only (Ollama hasn't shipped video input as of v0.32.6), i.e. the
-   virtual-experts-lab serving pattern extends to it (12B quantized,
-   sharded, one lab experiment resident at a time). A sliding window of
-   live frames stamped 00:00…00:25 gives real temporal context today.
-   Per-frame token cost undocumented — measure prefill before promising
-   cadence. Blockers for the phone: getUserMedia requires HTTPS → the
-   dead Tailscale sidecar needs a fresh TS_AUTHKEY (user-held).
-   Wire-color-style readings are assistive only — never for live
-   electrical work.
+4. **Live lens (camera, stateless — no storage). v1 spec converged
+   2026-08-10, two modes:**
+
+   - **Snapshot mode (aim-and-ask):** live viewfinder at native fps
+     with an in-browser detector (YOLO-nano/MediaPipe via WebGPU/wasm,
+     15–30 fps on-phone — zero server GPU, labels track the live view
+     perfectly) streaming class labels; the user presses **snapshot**
+     and that exact frame goes to gemma4 with the standing prompt. The
+     answer renders attached to the frozen frame (Polaroid panel, live
+     view shrinks to a corner). Alignment honesty by explicit choice —
+     the user picked the frame. Auto-trigger-on-steady is a later
+     option, not v1.
+   - **Synced mode (parked/tripod):** the display shows only the frame
+     under analysis — camera throttled via the getUserMedia `frameRate`
+     constraint (also the biggest battery saving) and/or the canvas
+     renders the last sampled frame. Continuous narration; the screen
+     IS the model's view, so display and analysis cannot disagree.
+     Self-pacing: cadence = achieved processing rate.
+
+   Shared: cadence dial caps each loop (requested-vs-achieved readout —
+   also our latency instrument); drop-frames-never-queue; standing
+   prompt; lean stateless frame endpoint (no session, no history, no
+   persistence). Tier ladder behind it: (a) in-browser detector,
+   (b) still-frame gemma4 via Ollama (~3–5 s/frame estimated —
+   measure), (c) **temporal video via the lab transformers harness**:
+   Gemma 4's native video input is timestamped frame sequences through
+   `AutoProcessor` — transformers-only (Ollama hasn't shipped video
+   input as of v0.32.6), so the virtual-experts-lab serving pattern
+   extends to it (12B quantized, sharded, one lab experiment resident
+   at a time); a sliding window of live frames stamped 00:00…00:25
+   gives real temporal context today. Per-frame token cost
+   undocumented — measure prefill before promising cadence. Blockers
+   for the phone: getUserMedia requires HTTPS → the dead Tailscale
+   sidecar needs a fresh TS_AUTHKEY (user-held). Wire-color-style
+   readings are assistive only — never for live electrical work.
 
 ## Decision log
 
