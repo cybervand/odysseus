@@ -347,6 +347,37 @@ interceptor cheaply per-layer; the kill criterion measures whether that
 gate earns rent over an always-armed regex). Prompt-side substitution
 (today's shim) stays as the fast path for bare arithmetic.
 
+### Two-model pipeline measured (2026-08-10, "granite translates, gpt-oss evaluates")
+
+The user proposed a translator→evaluator pipeline. Ran it live, both
+ways, same word problem:
+
+- **granite4.1:3b-cpu → math-expert:** mechanically flawless (CPU
+  translator co-resides with the shim's 15 GB; 12 s + 0.0 s), and the
+  answer was **exactly wrong** — `((80*1.609344)-56)/(1609.344/3600)`
+  is dimensional nonsense, evaluated to 10 perfect significant digits.
+  The pipeline relocates ALL wrongness into translation; the evaluator
+  contributes exactness, never correctness.
+- **gpt-oss-20b → its own math path (self-pipeline):** correct —
+  `100/((56+80*1.609344)/2)` → 1.08255851 h ≈ 65 min. The 20B chose
+  the right kinematic model and units in 8 s. (It did ignore an
+  "answer in minutes" instruction — translation has soft spots even
+  when the physics is right.)
+
+Findings worth rent: **(1)** translator quality dominates end-to-end
+correctness — a 3B CPU translator is a worse physicist than the 20B
+already resident, so the two-model split buys VRAM co-residency at the
+cost of the pipeline's only failure mode; **(2)** the visible seam is
+genuinely valuable — granite's error was caught by *reading the
+expression* (dimensional sanity of visible text), which a monolith
+hides in sampled digits; **(3)** when the best translator IS gpt-oss,
+the pipeline collapses to one model talking to its own evaluator —
+i.e., the self-pipeline is **Strategy A performed manually over HTTP**,
+and Phase 2's emission-time interception is just this seam moved inside
+the decode loop. The granite variant stands as a concrete embodiment of
+the kill-criterion baseline (external classifier/translator + same
+evaluator).
+
 ## Rejected alternatives
 
 - **Porting the reference as-is** — it does not contain the mechanism
