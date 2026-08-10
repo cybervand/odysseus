@@ -25,7 +25,7 @@ def _sanitize_export_filename(name: str) -> str:
 
 
 # Blind-compare helper sessions are created with this name prefix. Their real
-# model must never surface in the session list / sidebar — otherwise a blind
+# model must never surface in the session list / sidebar â€” otherwise a blind
 # comparison can be de-anonymized before the user votes (issue #1285).
 COMPARE_SESSION_PREFIX = "[CMP] "
 
@@ -115,7 +115,7 @@ def _verify_session_owner(request: Request, session_id: str, session_manager=Non
         if user and row.owner != user:
             raise HTTPException(404, f"Session {session_id} not found")
         return
-    # No DB row — allow the caller to act on an in-memory ghost they own.
+    # No DB row â€” allow the caller to act on an in-memory ghost they own.
     if session_manager is not None:
         ghost = getattr(session_manager, "sessions", {}).get(session_id)
         if ghost is not None and (not user or getattr(ghost, "owner", None) == user):
@@ -185,7 +185,7 @@ _HIDDEN_SYSTEM_SESSION_NAMES = {
 
 
 def _pick_endpoint_for_sort(owner=None):
-    """Pick model endpoint for auto-sort LLM call — uses utility endpoint setting, falls back to default."""
+    """Pick model endpoint for auto-sort LLM call â€” uses utility endpoint setting, falls back to default."""
     from src.endpoint_resolver import resolve_endpoint
     # Try utility endpoint first (what the user configured for background tasks)
     url, model, headers = resolve_endpoint("utility", owner=owner)
@@ -222,13 +222,13 @@ def setup_session_routes(
     def list_sessions(request: Request):
         user = effective_user(request)
         active_incognito_id = str(request.query_params.get("active_incognito_id") or "").strip()
-        # Lazy purge: incognito sessions are ephemeral by design — wipe leftovers
+        # Lazy purge: incognito sessions are ephemeral by design â€” wipe leftovers
         # from the DB and session_manager so they vanish on the next page refresh.
         # BUT: skip sessions that were created within the last 10 minutes.
         # Without that guard, the purge nukes the active "Nobody" session on the
         # very first /api/sessions call after creation, killing the in-flight
         # chat. The frontend's own _cleanupIncognitoSessions handler knows which
-        # session is current and won't delete the live one — this server-side
+        # session is current and won't delete the live one â€” this server-side
         # purge exists only to catch ghosts the frontend missed (tab close,
         # crash). Only clean up rows old enough to be definitely orphaned.
         try:
@@ -392,7 +392,7 @@ def setup_session_routes(
             )
             if not ids:
                 raise HTTPException(400, "Cannot reach /v1/models")
-            # Default to the first CHAT model — endpoints often list embedding/
+            # Default to the first CHAT model â€” endpoints often list embedding/
             # tts/whisper models first (e.g. text-embedding-ada-002), which
             # can't hold a conversation.
             _NON_CHAT = ("text-embedding", "embedding", "tts-", "whisper",
@@ -746,7 +746,7 @@ def setup_session_routes(
                 else:
                     session_manager._load_session_from_db(sid)
             except Exception:
-                pass  # Non-fatal — session will load on next access
+                pass  # Non-fatal â€” session will load on next access
             return {"status": "unarchived"}
         except HTTPException:
             raise
@@ -809,7 +809,7 @@ def setup_session_routes(
         except KeyError:
             raise HTTPException(404, f"Session {sid} not found")
         # Doc 013 round checkpoints: an in-flight reply whose run died before
-        # the end-of-run persist would otherwise vanish on refresh — promote
+        # the end-of-run persist would otherwise vanish on refresh â€” promote
         # the surviving checkpoint into real history before rendering.
         try:
             from src import agent_runs
@@ -821,7 +821,7 @@ def setup_session_routes(
         # Doc 014 phase 3a: the event log is the history source. When the
         # session has log coverage that aligns 1:1 with the user turns,
         # overlay assistant metadata (round_texts + tool_events) with the
-        # log-assembled version — one source of truth; saved metadata
+        # log-assembled version â€” one source of truth; saved metadata
         # remains the pre-log fallback. Conservative: any misalignment
         # leaves history untouched.
         try:
@@ -839,7 +839,7 @@ def setup_session_routes(
                         if asm["round_texts"]:
                             # The log has no reply events for content-mute
                             # rounds (gemma's "Done." lives only in the row
-                            # content) — the overlay must never hide talking
+                            # content) â€” the overlay must never hide talking
                             # the log missed. Short un-captured content tails
                             # are appended as a final round.
                             _rtexts = list(asm["round_texts"])
@@ -867,7 +867,7 @@ def setup_session_routes(
 
     @router.get("/session/{sid}/feed")
     def get_feed(request: Request, sid: str, from_seq: int = 0):
-        """Doc 014: the session's raw event log (durable sessions only —
+        """Doc 014: the session's raw event log (durable sessions only â€”
         incognito feeds live in RAM and are not exposed post-hoc by
         design). Resume-shaped: pass from_seq = last seen seq + 1."""
         _verify_session_owner(request, sid)
@@ -1130,7 +1130,7 @@ def setup_session_routes(
 
         Phase 1 deletes empty/throwaway sessions and Phase 2 asks the LLM
         to assign folders. When `skip_llm=true` the endpoint returns
-        after Phase 1 — used by the "Tidy (no AI)" UI affordance so
+        after Phase 1 â€” used by the "Tidy (no AI)" UI affordance so
         users can clean junk without spending tokens.
         """
         from src.llm_core import llm_call
@@ -1162,7 +1162,7 @@ def setup_session_routes(
             rows = rows_q.limit(2000).all()
             folder_map = {r.id: r.folder for r in rows}
             # Precompute per-session message counts in TWO aggregate queries
-            # instead of 1–3 queries PER session — with many chats the per-row
+            # instead of 1â€“3 queries PER session â€” with many chats the per-row
             # loop was doing thousands of round-trips and blowing the timeout.
             from sqlalchemy import func as _sa_func
             _counts = dict(db.query(DbMsg.session_id, _sa_func.count(DbMsg.id)).group_by(DbMsg.session_id).all())
@@ -1193,12 +1193,12 @@ def setup_session_routes(
                 elif msg_count <= _THROWAWAY_MAX_MESSAGES:
                     name = (row.name or "").strip().lower()
                     # Check first user message content (AI renames sessions, so
-                    # "hi" becomes "Casual Greeting Exchange" — name alone won't match)
+                    # "hi" becomes "Casual Greeting Exchange" â€” name alone won't match)
                     first_msg = db.query(DbMsg.content).filter(
                         DbMsg.session_id == row.id, DbMsg.role == "user"
                     ).order_by(DbMsg.timestamp).first()
                     first_text = (first_msg[0] or "").strip().lower() if first_msg else ""
-                    # Count assistant messages — if user sent something but AI never replied, it's dead
+                    # Count assistant messages â€” if user sent something but AI never replied, it's dead
                     assistant_count = _asst_counts.get(row.id, 0)
                     if name in _THROWAWAY_NAMES or name.startswith("chat:") or first_text in _THROWAWAY_NAMES:
                         should_delete = True
@@ -1251,7 +1251,7 @@ def setup_session_routes(
             if s.archived or s.name == "Incognito":
                 continue
             if folder_map.get(s.id):
-                # Already in a folder — skip on this pass.
+                # Already in a folder â€” skip on this pass.
                 continue
             name = s.name or "(unnamed)"
             all_candidates.append({
@@ -1278,7 +1278,7 @@ def setup_session_routes(
                 }
             return {"status": "skipped", "reason": "No unfiled sessions to sort"}
 
-        # Pick an endpoint — prefer admin-configured task endpoint
+        # Pick an endpoint â€” prefer admin-configured task endpoint
         from src.task_endpoint import resolve_task_endpoint
         url, model, headers = resolve_task_endpoint(owner=user)
         if not url:
@@ -1291,7 +1291,7 @@ def setup_session_routes(
         prompt = (
             "You are a session organizer. Group these chat sessions into folders by topic.\n\n"
             "Rules:\n"
-            "- Be aggressive about grouping — put EVERY session in a folder\n"
+            "- Be aggressive about grouping â€” put EVERY session in a folder\n"
             "- Use short folder names (2-4 words max)\n"
             "- Use the 8-char ID prefixes exactly as given\n"
             "- Output ONLY raw JSON, no markdown fences, no explanation\n\n"
@@ -1303,16 +1303,16 @@ def setup_session_routes(
         try:
             logger.info(f"Auto-sort: using model={model} at {url}")
             # 16384 (was 4096): with many chats the folder JSON is large, and a
-            # reasoning model spends tokens thinking first — 4096 truncated the
+            # reasoning model spends tokens thinking first â€” 4096 truncated the
             # JSON mid-output, so it never parsed ("invalid JSON for auto-sort").
             raw = llm_call(url, model, [{"role": "user", "content": prompt}],
                            temperature=0.3, max_tokens=16384, headers=headers, timeout=120)
             logger.info(f"Auto-sort raw response ({len(raw)} chars): {raw[:300]}")
-            # Extract JSON from response — handle markdown fences, leading text,
+            # Extract JSON from response â€” handle markdown fences, leading text,
             # reasoning-model <think> blocks, and trailing commas.
             text = raw.strip()
-            # Reasoning models emit <think>…</think> (often containing { } that
-            # would derail the brace scan) before the answer — drop it first.
+            # Reasoning models emit <think>â€¦</think> (often containing { } that
+            # would derail the brace scan) before the answer â€” drop it first.
             text = re.sub(r'<think(?:ing)?>[\s\S]*?</think(?:ing)?>', '', text, flags=re.I).strip()
 
             def _loads_lenient(s):
@@ -1332,7 +1332,7 @@ def setup_session_routes(
                 fence_match = re.search(r'```(?:json)?\s*\n?([\s\S]*?)```', text)
                 if fence_match:
                     result = _loads_lenient(fence_match.group(1).strip())
-            # First { … last } block
+            # First { â€¦ last } block
             if result is None:
                 brace_start = text.find('{')
                 brace_end = text.rfind('}')
@@ -1340,7 +1340,7 @@ def setup_session_routes(
                     result = _loads_lenient(text[brace_start:brace_end + 1])
             if result is None:
                 logger.error(f"Auto-sort: could not parse JSON from: {text[:500]}")
-                raise HTTPException(502, "AI returned invalid JSON for auto-sort — the model may not follow JSON instructions; try a different utility model in Settings.")
+                raise HTTPException(502, "AI returned invalid JSON for auto-sort â€” the model may not follow JSON instructions; try a different utility model in Settings.")
         except HTTPException:
             raise
         except Exception as e:
@@ -1397,7 +1397,7 @@ def setup_session_routes(
         finally:
             db.close()
 
-        # How many unfiled chats are left after this batch — the
+        # How many unfiled chats are left after this batch â€” the
         # frontend uses this to decide whether to show "Tidy more" or
         # "All sorted!" in the toast.
         unfiled_remaining_after = max(0, unfiled_total - updated)
