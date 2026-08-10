@@ -59,19 +59,64 @@ tests.
 
 ## Roadmap
 
-1. **Browser/eyes (gap 1):** diagnose `builtin_browser` MCP (npx
-   download at boot? missing toolchain tier?); if unusable, a headless
-   chromium container on br1 + navigate/screenshot/console-errors tool.
-   Then: screenshot → gemma4 critique closes the self-verification loop
-   for built websites (doc 013 gauntlet family).
-2. **`calc` tool (gap 2):** one-string-arg agent tool wrapping the
-   doc-018 AST evaluator (unicode ops, comma/fragment guards). Smallest
-   possible format surface for weak models; no FP problem — the model
-   opts in by calling.
-3. **`read_attachment` (gap 3):** adapt PR #5449 with the reviewer's
-   fixes (move manifest resolution off the event loop, batch index
-   writes). Gives agents access to chat attachments; composes with the
-   rehydrator.
+1. **Browser/eyes (gap 1) — design (2026-08-10).** Finding: upstream's
+   `builtin_browser` is the official **Playwright MCP**
+   (`npx -y @playwright/mcp@latest --headless --caps vision`,
+   `src/builtin_mcp.py`), already wired with a persistent cache
+   (`data/local/playwright-mcp-cache` incl. `PLAYWRIGHT_BROWSERS_PATH`
+   — on the mounted data volume, so it survives deploys) and an
+   `ODYSSEUS_BROWSER_MCP_REQUIRE_CACHE` no-network mode. So this is an
+   *enablement + bridging* project, not a build:
+   - **Phase A (enable):** check whether prod's `builtin_browser`
+     connects (the imgtest failure was fresh-data cold cache); prime
+     the cache once via the doc-015 toolchain tier (`npx -y
+     @playwright/mcp --version` + chromium download, ~300 MB, as
+     uid 99); watch container RAM — headless chromium adds
+     200–400 MB/page on a 32 GB box.
+   - **Phase B (the eyes loop):** `--caps vision` returns screenshots
+     as MCP image content; bridge them into the upload store →
+     attachment id → **vision injection** (shared mechanism with
+     `read_attachment` below) → gemma4 critique. Console errors and
+     DOM text come free from the MCP's existing tools.
+   - **Guards:** browsing posture is the *inverse* of the api_call
+     SSRF pin — the whole point is our own br1/LAN sites. Default
+     allowlist: br1 subnet + registered server ports + user-named
+     URLs; page lifecycle is per-turn (close everything; no persistent
+     sessions in v1).
+   - **Validation:** the doc-013 gauntlet website probes gain a
+     "screenshot your own site and fix what you see" step — the
+     self-verification loop the write-time health checks can't reach.
+2. **`calc` tool (gap 2) — design (2026-08-10).** Vendor the doc-018
+   evaluator into `src/calc_eval.py` (additive; the lab shim keeps its
+   server-side copy — repo copy is canonical going forward and
+   Strategy A imports it later). Tool-mode differences from the shim:
+   the model opts in by calling, so there is NO hijack/FP risk — which
+   safely unlocks a **scientific tier**: AST-whitelisted `ast.Call` to
+   `math.{sqrt,sin,cos,tan,log,log2,log10,exp,floor,ceil,fabs}` plus
+   `pi/e/tau` names. Keep unicode/comma normalization (paste
+   robustness). **New and mandatory — in-process resource guards** the
+   shim never needed as a container PID 1: exponent/operand digit caps
+   (reject `**` beyond ~10k digits), result magnitude cap, AST depth
+   cap — a calc tool that can hang the app on `9**9**9` is a denial of
+   service, not a calculator. Schema: `{expression: string}` →
+   `{result, formatted, error?}`; errors teach ("`sqrt` needs
+   parentheses: sqrt(2)" — composes with doc 020 help). Tool-index
+   wording steers weak models python→calc for pure arithmetic.
+3. **`read_attachment` (gap 3) — design (2026-08-10).** Adapt PR
+   #5449 keeping its reviewed-sound core (owner-checked bounded
+   manifest, stable `odysseus://attachment/<id>` URIs, no filesystem
+   paths, no cross-owner or admin bypass) and applying exactly the
+   reviewer's asks: manifest resolution via `asyncio.to_thread` (a
+   20-candidate rebuild blocked the loop 0.4 s), **one batched index
+   write** per reconstruction (was 20), regression tests for
+   loop-responsiveness and batched lifecycle writes. Our addition —
+   the piece #5449 lacked: **vision injection**. For image attachments
+   on vision-capable models, the tool result carries a marker and feed
+   assembly injects the actual image block via the rehydrator
+   machinery (ebeac24a); text-only models get the cached VL
+   description. This makes "bytes → attachment → model eyes" ONE
+   pathway shared by chat uploads, browser screenshots (item 1), lens
+   snapshots a user promotes to chat, and future camera_snapshot.
 4. **Live lens (camera, stateless — no storage). v1 spec converged
    2026-08-10, two modes:**
 
