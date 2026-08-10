@@ -652,6 +652,9 @@ def _build_ollama_payload(
     # directly.
     if "gpt-oss" in (model or "").lower():
         payload.setdefault("think", "low")
+    # Command-menu overrides (chat bar): user-selected think on/off/effort.
+    from src.thinking_controls import apply_to_ollama_native
+    apply_to_ollama_native(payload, model)
     return payload
 
 
@@ -2313,6 +2316,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         # instead. Ollama's /v1 maps reasoning_effort onto its think levels.
         if _is_ollama_openai_compat_url(url) and "gpt-oss" in (model or "").lower():
             payload.setdefault("reasoning_effort", "low")
+            # Command-menu override: user-selected effort beats the default.
+            from src.thinking_controls import effort_override
+            if effort_override():
+                payload["reasoning_effort"] = effort_override()
         _apply_local_cache_affinity(payload, url, session_id)
         _apply_local_generation_stability(payload, target_url, model)
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)

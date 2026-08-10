@@ -731,6 +731,9 @@ def setup_chat_routes(
         use_research = form_data.get("use_research")
         time_filter = form_data.get("time_filter")
         preset_id = form_data.get("preset_id")
+        # Command-menu thinking controls (validated in thinking_controls)
+        think_mode_field = form_data.get("think_mode")
+        reasoning_effort_field = form_data.get("reasoning_effort")
         # Issue #3229: API callers send JSON, not FormData.  Read from the
         # JSON body as fallback so callers who send {"allow_bash": true}
         # actually get bash enabled.
@@ -1272,6 +1275,11 @@ def setup_chat_routes(
         async def stream_with_save() -> AsyncGenerator[str, None]:
             # _effective_mode is read-only here; closure captures it from
             # the outer scope. (Was `nonlocal` but never reassigned.)
+            # Thinking overrides must be set HERE, not in the request
+            # handler: this generator runs as a detached agent_runs task,
+            # so handler-context ContextVars never reach it.
+            from src.thinking_controls import set_overrides as _set_think
+            _think_tokens = _set_think(think_mode_field, reasoning_effort_field)
             research_sources = None
             web_sources = ctx.web_sources
 
@@ -1883,6 +1891,8 @@ def setup_chat_routes(
                         logger.exception("Failed to save partial response on disconnect (session %s)", session)
                     raise
                 finally:
+                    from src.thinking_controls import reset_overrides as _reset_think
+                    _reset_think(_think_tokens)
                     _active_streams.pop(session, None)
 
         async def _safe_stream() -> AsyncGenerator[str, None]:

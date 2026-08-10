@@ -1645,6 +1645,13 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       if (selectedRouteForSend.model) fd.append('selected_model', selectedRouteForSend.model);
       if (selectedRouteForSend.endpoint_url) fd.append('selected_endpoint_url', selectedRouteForSend.endpoint_url);
       if (selectedRouteForSend.endpoint_id) fd.append('selected_endpoint_id', selectedRouteForSend.endpoint_id);
+      // Command-menu thinking controls (validated server-side)
+      try {
+        const _tm = localStorage.getItem('odysseus-think-mode');
+        if (_tm && _tm !== 'auto') fd.append('think_mode', _tm);
+        const _re = localStorage.getItem('odysseus-reasoning-effort');
+        if (_re && _re !== 'default') fd.append('reasoning_effort', _re);
+      } catch (_) {}
       if (ids.length) fd.append('attachments', JSON.stringify(ids));
       // Auto-save & send active doc ID so the backend sees latest content
       if (documentModule && activeDocIdForSend) {

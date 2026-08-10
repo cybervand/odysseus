@@ -291,6 +291,55 @@ function initializeEventListeners() {
     if (ta) setTimeout(() => ta.focus(), 100);
   });
 
+  // Command menu: verifier / thinking / reasoning toggles. Thinking and
+  // reasoning are per-message send fields persisted in localStorage;
+  // verifier mirrors the global agent_verifier_subagent app setting.
+  (function initCommandToggles() {
+    const THINK_KEY = 'odysseus-think-mode';
+    const EFFORT_KEY = 'odysseus-reasoning-effort';
+    const thinkBtn = el('cmd-think-toggle'), thinkState = el('cmd-think-state');
+    const effortBtn = el('cmd-effort-toggle'), effortState = el('cmd-effort-state');
+    const verBtn = el('cmd-verifier-toggle'), verState = el('cmd-verifier-state');
+    if (!thinkBtn || !effortBtn || !verBtn) return;
+    const THINK_STATES = ['auto', 'off', 'on'];
+    const EFFORT_STATES = ['default', 'low', 'medium', 'high'];
+    const renderLocal = () => {
+      thinkState.textContent = localStorage.getItem(THINK_KEY) || 'auto';
+      effortState.textContent = localStorage.getItem(EFFORT_KEY) || 'default';
+    };
+    renderLocal();
+    const cycle = (key, states) => {
+      const cur = localStorage.getItem(key) || states[0];
+      const next = states[(states.indexOf(cur) + 1) % states.length];
+      localStorage.setItem(key, next);
+      renderLocal();
+    };
+    thinkBtn.addEventListener('click', () => cycle(THINK_KEY, THINK_STATES));
+    effortBtn.addEventListener('click', () => cycle(EFFORT_KEY, EFFORT_STATES));
+    let verVal = null;
+    const refreshVerifier = async () => {
+      try {
+        const r = await fetch('/api/settings', { credentials: 'same-origin' });
+        const s = await r.json();
+        verVal = !!s.agent_verifier_subagent;
+        verState.textContent = verVal ? 'on' : 'off';
+      } catch (_) { verState.textContent = '?'; }
+    };
+    refreshVerifier();
+    verBtn.addEventListener('click', async () => {
+      if (verVal === null) { await refreshVerifier(); if (verVal === null) return; }
+      try {
+        const r = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ agent_verifier_subagent: !verVal }),
+        });
+        if (r.ok) { verVal = !verVal; verState.textContent = verVal ? 'on' : 'off'; }
+      } catch (_) {}
+    });
+  })();
+
   // Camera capture (phones open the camera app directly via the input's
   // accept+capture attrs; desktop degrades to an image picker)
   const _overflowCamera = el('overflow-camera-btn');
@@ -2220,6 +2269,9 @@ function initializeEventListeners() {
     // box — keeps the mobile keyboard up.
     menu.querySelectorAll('.overflow-menu-item').forEach(item => {
       item.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+      // data-stay-open items are cycling toggles (command menu) — keep the
+      // menu up so several can be adjusted in one visit.
+      if (item.dataset.stayOpen) return;
       item.addEventListener('click', () => closeOverflowMenu());
     });
     document.addEventListener('click', (e) => {
