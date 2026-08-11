@@ -66,7 +66,10 @@ def test_service_worker_precaches_fork_files():
 
 def test_token_ticker_body_lives_in_fork_module():
     fork = Path("static/js/fork/tokenTicker.js").read_text(encoding="utf-8")
-    assert "MutationObserver" in fork
+    # Length-delta method: repaints do not change the total length, so
+    # the rate cannot stack (the observer method counted every repaint).
+    assert "textContent" in fork
+    assert "MutationObserver" not in fork
     assert "fork-tps" in fork
     # app.js may import and start the module. The element id must not
     # appear there — the body lives in the fork file.

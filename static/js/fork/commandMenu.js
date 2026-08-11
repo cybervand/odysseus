@@ -22,20 +22,36 @@ function init() {
   const verCheck = el('cmd-verifier-check');
   if (!cmdBtn || !cmdMenu || !thinkCheck || !stepper || !verCheck) return;
 
-  // Put the popup directly above the chip. Fixed coordinates ignore
-  // ancestor overflow, which clipped the absolute-positioned popup.
+  // Same technique as the + overflow menu: move the popup to <body>
+  // to escape the composer's container-type trap, then set fixed
+  // coordinates from the chip. The composer's containment makes fixed
+  // positioning useless inside it — this mirrors the working menu.
   const place = () => {
     const r = cmdBtn.getBoundingClientRect();
     cmdMenu.style.left = r.left + 'px';
-    cmdMenu.style.bottom = (window.innerHeight - r.top + 8) + 'px';
-    cmdMenu.style.top = 'auto';
+    cmdMenu.style.maxHeight = '';
+    cmdMenu.style.overflowY = '';
+    const avail = r.top - 16;
+    const natural = cmdMenu.scrollHeight;
+    const h = Math.min(natural, avail);
+    if (natural > avail) {
+      cmdMenu.style.maxHeight = avail + 'px';
+      cmdMenu.style.overflowY = 'auto';
+    }
+    cmdMenu.style.top = (r.top - 8 - h) + 'px';
+    cmdMenu.style.bottom = 'auto';
   };
 
   // Open and close the popup. A click on a control does not close it.
   cmdBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (cmdMenu.classList.contains('hidden')) place();
-    cmdMenu.classList.toggle('hidden');
+    if (cmdMenu.classList.contains('hidden')) {
+      document.body.appendChild(cmdMenu);
+      cmdMenu.classList.remove('hidden');
+      place();
+    } else {
+      cmdMenu.classList.add('hidden');
+    }
   });
   // A resize moves the chip. Close the popup instead of drifting.
   window.addEventListener('resize', () => cmdMenu.classList.add('hidden'));

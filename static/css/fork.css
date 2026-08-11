@@ -15,14 +15,11 @@
   vertical-align: middle;
 }
 
-/* The command popup opens above its chip. Absolute positioning got
-   clipped by an ancestor with hidden overflow. The popup uses fixed
-   positioning; commandMenu.js sets the coordinates from the chip at
-   each open. */
-.cmd-wrapper .cmd-menu {
-  position: fixed;
-  transform-origin: bottom left;
-}
+/* The command popup gets its shell styles and fixed positioning from
+   the shared overflow-menu class. commandMenu.js moves it to <body>
+   at open (the composer's containment traps fixed positioning) and
+   sets the coordinates from the chip — the same technique as the
+   + overflow menu. No extra positioning rules here. */
 
 /* Command menu (model controls popup): fixed width so changing state
    labels can never reflow the layout */

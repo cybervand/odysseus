@@ -6,10 +6,13 @@
 
 const el = (id) => document.getElementById(id);
 
-// The ticker watches the chat transcript with a MutationObserver. It
-// does not touch the stream code in chat.js. It counts new text and
-// shows an estimate of tokens each second. One token is near four
-// characters. The tilde in the label shows that this is an estimate.
+// The ticker measures the total text length of the transcript on each
+// tick and counts only growth. The first version counted DOM
+// mutations, and the markdown renderer repaints the full message on
+// each chunk — the same text got counted many times and the display
+// showed thousands of tokens each second (seen 2026-08-12). A repaint
+// does not change the total length, so the delta method is immune.
+// One token is near four characters. The tilde shows the estimate.
 
 const TICK_MS = 500;        // refresh period for the display
 const WINDOW_MS = 2000;     // sliding window for the rate
@@ -21,42 +24,30 @@ function init() {
   const history = el('chat-history');
   if (!ticker || !history) return;
 
-  let samples = [];          // [time_ms, chars_added]
+  let lastLen = null;
   let lastGrowth = 0;
-
-  const observer = new MutationObserver((mutations) => {
-    let added = 0;
-    for (const m of mutations) {
-      if (m.type === 'characterData') {
-        added += Math.max(0, (m.target.data || '').length - (m.oldValue || '').length);
-      } else if (m.type === 'childList') {
-        for (const node of m.addedNodes) {
-          added += (node.textContent || '').length;
-        }
-      }
-    }
-    if (added > 0) {
-      const now = performance.now();
-      samples.push([now, added]);
-      lastGrowth = now;
-    }
-  });
-  observer.observe(history, {
-    subtree: true,
-    childList: true,
-    characterData: true,
-    characterDataOldValue: true,
-  });
+  let samples = [];  // [time_ms, chars_added]
 
   setInterval(() => {
     const now = performance.now();
+    const len = (history.textContent || '').length;
+    if (lastLen === null) {
+      lastLen = len;
+      return;
+    }
+    const added = Math.max(0, len - lastLen);
+    lastLen = len;
+    if (added > 0) {
+      samples.push([now, added]);
+      lastGrowth = now;
+    }
     samples = samples.filter(([t]) => now - t <= WINDOW_MS);
     if (now - lastGrowth > IDLE_HIDE_MS || samples.length === 0) {
       ticker.hidden = true;
       return;
     }
     const chars = samples.reduce((sum, [, c]) => sum + c, 0);
-    const seconds = Math.max(0.001, Math.min(WINDOW_MS, now - samples[0][0]) / 1000);
+    const seconds = (now - samples[0][0] + TICK_MS) / 1000;
     const tps = chars / CHARS_PER_TOKEN / seconds;
     ticker.textContent = '≈ ' + tps.toFixed(1) + ' t/s';
     ticker.hidden = false;
