@@ -40,11 +40,14 @@ def test_frontend_calls_the_mounted_settings_route():
     This is the exact bug: the command-menu wiring called the unmounted
     path and the switch was dead with no visible error.
     """
-    app_js = Path("static/app.js").read_text(encoding="utf-8")
-    assert "'/api/auth/settings'" in app_js, (
+    # The command menu moved to a fork module (doc 021, phase 2).
+    fork_js = Path("static/js/fork/commandMenu.js").read_text(encoding="utf-8")
+    assert "'/api/auth/settings'" in fork_js, (
         "command menu must call the mounted settings route"
     )
-    assert "fetch('/api/settings'" not in app_js, (
-        "/api/settings is not a mounted route (auth router prefix is "
-        "/api/auth) — a fetch to it 404s and the verifier switch dies"
-    )
+    for f in ("static/js/fork/commandMenu.js", "static/app.js"):
+        src = Path(f).read_text(encoding="utf-8")
+        assert "fetch('/api/settings'" not in src, (
+            f"{f}: /api/settings is not a mounted route (auth router "
+            "prefix is /api/auth) — a fetch to it 404s and the control dies"
+        )

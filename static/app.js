@@ -27,6 +27,10 @@ import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
 import adminModule from './js/admin.js';
 import settingsModule from './js/settings.js';
+// Fork modules (doc 021): fork-owned features live in js/fork/. Only
+// these import lines and their init calls stay in this upstream file.
+import forkCommandMenu from './js/fork/commandMenu.js';
+import forkCamera from './js/fork/camera.js';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
 import './js/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
@@ -291,118 +295,10 @@ function initializeEventListeners() {
     if (ta) setTimeout(() => ta.focus(), 100);
   });
 
-  // Command menu: verifier / thinking / reasoning toggles. Thinking and
-  // reasoning are per-message send fields persisted in localStorage;
-  // verifier mirrors the global agent_verifier_subagent app setting.
-  (function initCommandToggles() {
-    const THINK_KEY = 'odysseus-think-mode';
-    const EFFORT_KEY = 'odysseus-reasoning-effort';
-    const cmdBtn = el('cmd-menu-btn'), cmdMenu = el('cmd-menu');
-    const thinkCheck = el('cmd-think-check');
-    const stepper = el('cmd-effort-stepper'), effortState = el('cmd-effort-state');
-    const verCheck = el('cmd-verifier-check');
-    if (!cmdBtn || !cmdMenu || !thinkCheck || !stepper || !verCheck) return;
-    // Popup open/close (own menu — items never auto-close it)
-    cmdBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      cmdMenu.classList.toggle('hidden');
-    });
-    document.addEventListener('click', (e) => {
-      if (!cmdMenu.classList.contains('hidden') && !cmdMenu.contains(e.target) && !cmdBtn.contains(e.target)) {
-        cmdMenu.classList.add('hidden');
-      }
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') cmdMenu.classList.add('hidden');
-    });
-    const EFFORT_STATES = ['default', 'low', 'medium', 'high'];
-    const steps = Array.from(stepper.querySelectorAll('.cmd-step'));
-    const _cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-    const renderLocal = () => {
-      // Thinking switch: on = allowed (auto per-model policy), off =
-      // suppressed. Legacy stored 'on' counts as allowed.
-      thinkCheck.checked = (localStorage.getItem(THINK_KEY) || 'auto') !== 'off';
-      const eff = localStorage.getItem(EFFORT_KEY) || 'default';
-      effortState.textContent = '(' + _cap(eff) + ')';
-      const idx = Math.max(0, EFFORT_STATES.indexOf(eff));
-      steps.forEach((s, i) => s.classList.toggle('active', i === idx));
-    };
-    renderLocal();
-    thinkCheck.addEventListener('change', () => {
-      localStorage.setItem(THINK_KEY, thinkCheck.checked ? 'auto' : 'off');
-    });
-    // Stepped effort selector (throttle-with-detents): tap a dot or drag
-    // across; position snaps to the nearest stop. State only changes at
-    // step boundaries and rendering only swaps classes — no flicker.
-    const setEffort = (idx) => {
-      const clamped = Math.min(EFFORT_STATES.length - 1, Math.max(0, idx));
-      if ((localStorage.getItem(EFFORT_KEY) || 'default') !== EFFORT_STATES[clamped]) {
-        localStorage.setItem(EFFORT_KEY, EFFORT_STATES[clamped]);
-        renderLocal();
-      }
-    };
-    steps.forEach((s, i) => s.addEventListener('click', () => setEffort(i)));
-    const idxFromEvent = (e) => {
-      const r = stepper.getBoundingClientRect();
-      const frac = (e.clientX - r.left) / Math.max(1, r.width);
-      return Math.round(frac * (EFFORT_STATES.length - 1));
-    };
-    stepper.addEventListener('pointerdown', (e) => {
-      try { stepper.setPointerCapture(e.pointerId); } catch (_) {}
-      setEffort(idxFromEvent(e));
-    });
-    stepper.addEventListener('pointermove', (e) => {
-      if (e.buttons) setEffort(idxFromEvent(e));
-    });
-    // Read the saved verifier state. If the read fails, say so. A
-    // silent failure here showed a wrong switch state for days
-    // (doc 021, phase 1).
-    const refreshVerifier = async () => {
-      try {
-        const r = await fetch('/api/auth/settings', { credentials: 'same-origin' });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const s = await r.json();
-        verCheck.checked = !!s.agent_verifier_subagent;
-      } catch (err) {
-        console.warn('verifier state read failed:', err);
-        uiModule.showError && uiModule.showError('Could not read the verifier setting');
-      }
-    };
-    refreshVerifier();
-    // Save the new verifier state. If the save fails, put the switch
-    // back and show the reason.
-    verCheck.addEventListener('change', async () => {
-      const want = verCheck.checked;
-      let reason = '';
-      try {
-        const r = await fetch('/api/auth/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ agent_verifier_subagent: want }),
-        });
-        if (r.ok) return;
-        reason = 'HTTP ' + r.status;
-        try { reason = (await r.json()).detail || reason; } catch (_) {}
-      } catch (err) {
-        reason = String(err);
-      }
-      verCheck.checked = !want;
-      uiModule.showError && uiModule.showError('Verifier setting not saved: ' + reason);
-    });
-  })();
-
-  // Camera capture (phones open the camera app directly via the input's
-  // accept+capture attrs; desktop degrades to an image picker)
-  const _overflowCamera = el('overflow-camera-btn');
-  if (_overflowCamera) _overflowCamera.addEventListener('click', ()=> el('camera-input').click());
-  const _cameraInput = el('camera-input');
-  if (_cameraInput) _cameraInput.addEventListener('change', async (e)=>{
-    await fileHandlerModule.addFiles(Array.from(e.target.files || []));
-    e.target.value = '';
-    const ta = el('message');
-    if (ta) setTimeout(() => ta.focus(), 100);
-  });
+  // Fork features (doc 021): the bodies live in js/fork/. Keep only
+  // these two calls in this upstream file.
+  forkCommandMenu.init();
+  forkCamera.init();
 
   // Paste handler
   window.addEventListener('paste', async (e)=>{
@@ -2320,10 +2216,6 @@ function initializeEventListeners() {
     // so tapping an item (e.g. Attach files) doesn't steal focus from the message
     // box — keeps the mobile keyboard up.
     menu.querySelectorAll('.overflow-menu-item').forEach(item => {
-      // data-stay-open items are command-menu toggles/sliders — keep the
-      // menu up so several can be adjusted in one visit, and skip the
-      // pointerdown preventDefault (it would break range-slider dragging).
-      if (item.dataset.stayOpen) return;
       item.addEventListener('pointerdown', (e) => { e.preventDefault(); });
       item.addEventListener('click', () => closeOverflowMenu());
     });

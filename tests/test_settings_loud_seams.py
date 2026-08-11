@@ -45,7 +45,9 @@ def test_route_refuses_unknown_keys():
 
 
 def test_fork_ui_shows_write_failures():
-    """The verifier switch must show a message when a save fails."""
-    app_js = Path("static/app.js").read_text(encoding="utf-8")
-    assert "Verifier setting not saved" in app_js
-    assert "Could not read the verifier setting" in app_js
+    """The verifier switch must show a message when a save fails.
+
+    The switch moved to a fork module (doc 021, phase 2)."""
+    fork_js = Path("static/js/fork/commandMenu.js").read_text(encoding="utf-8")
+    assert "Verifier setting not saved" in fork_js
+    assert "Could not read the verifier setting" in fork_js
