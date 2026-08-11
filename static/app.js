@@ -354,16 +354,26 @@ function initializeEventListeners() {
     stepper.addEventListener('pointermove', (e) => {
       if (e.buttons) setEffort(idxFromEvent(e));
     });
+    // Read the saved verifier state. If the read fails, say so. A
+    // silent failure here showed a wrong switch state for days
+    // (doc 021, phase 1).
     const refreshVerifier = async () => {
       try {
         const r = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
         const s = await r.json();
         verCheck.checked = !!s.agent_verifier_subagent;
-      } catch (_) {}
+      } catch (err) {
+        console.warn('verifier state read failed:', err);
+        uiModule.showError && uiModule.showError('Could not read the verifier setting');
+      }
     };
     refreshVerifier();
+    // Save the new verifier state. If the save fails, put the switch
+    // back and show the reason.
     verCheck.addEventListener('change', async () => {
       const want = verCheck.checked;
+      let reason = '';
       try {
         const r = await fetch('/api/auth/settings', {
           method: 'POST',
@@ -371,8 +381,14 @@ function initializeEventListeners() {
           credentials: 'same-origin',
           body: JSON.stringify({ agent_verifier_subagent: want }),
         });
-        if (!r.ok) verCheck.checked = !want;  // revert on refusal
-      } catch (_) { verCheck.checked = !want; }
+        if (r.ok) return;
+        reason = 'HTTP ' + r.status;
+        try { reason = (await r.json()).detail || reason; } catch (_) {}
+      } catch (err) {
+        reason = String(err);
+      }
+      verCheck.checked = !want;
+      uiModule.showError && uiModule.showError('Verifier setting not saved: ' + reason);
     });
   })();
 

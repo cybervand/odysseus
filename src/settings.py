@@ -107,11 +107,11 @@ DEFAULT_SETTINGS = {
     "research_run_timeout_seconds": 1800,
     "agent_max_tool_calls": 0,
     "agent_max_rounds": 20,  # per-message agent step cap (clamped 1..200)
-    # Independent completion verifier after agent runs (agent_loop reads
-    # this at the completion-claim gate). Was settable only by editing
-    # data/settings.json — absent from this dict, the POST /api/settings
-    # whitelist silently dropped every UI write (command-menu pill bug,
-    # 2026-08-11). Default off: an attended chat has a human verifier.
+    # The completion verifier for agent runs. The agent loop reads this
+    # key when a run says it is complete. Before 2026-08-11, this key
+    # was not in this dict. The settings route dropped each write of
+    # the key without an error. Default off: the user can check an
+    # attended chat.
     "agent_verifier_subagent": False,
     # Soft input-token budget for the agent loop. The DEFAULT value (6000) is the
     # "auto" sentinel: it means "scale the budget to the model's context window"
@@ -240,6 +240,23 @@ def save_settings(settings: dict):
     """Persist settings to disk (atomic; see core.atomic_io)."""
     from core.atomic_io import atomic_write_json
     atomic_write_json(SETTINGS_FILE, settings, indent=2)
+
+
+def split_settings_update(body: dict) -> tuple:
+    """Divide a settings update into known keys and unknown keys.
+
+    The settings route saves only keys that are in DEFAULT_SETTINGS.
+    Before this function, the route dropped unknown keys and gave no
+    error. That silent drop kept a dead control in the UI for days
+    (doc 021, phase 1). The route must refuse unknown keys with an
+    error that names them.
+
+    Returns (known, unknown). The known part is a dict. The unknown
+    part is a sorted list of key names.
+    """
+    known = {k: v for k, v in body.items() if k in DEFAULT_SETTINGS}
+    unknown = sorted(k for k in body if k not in DEFAULT_SETTINGS)
+    return known, unknown
     _invalidate_caches()
 
 

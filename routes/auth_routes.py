@@ -21,6 +21,7 @@ from src.settings import (
     save_settings as _save_settings,
     load_features as _load_features,
     save_features as _save_features,
+    split_settings_update as _split_settings_update,
     DEFAULT_SETTINGS,
 )
 from src.integrations import (
@@ -649,6 +650,13 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         if not user or not auth_manager.is_admin(user):
             raise HTTPException(403, "Admin only")
         body = await request.json()
+        # Refuse unknown keys with an error that names them. Before this
+        # check, the route dropped unknown keys and gave no error. A
+        # client with a wrong or old key name then failed with no
+        # signal (doc 021, phase 1).
+        _known, _unknown = _split_settings_update(body)
+        if _unknown:
+            raise HTTPException(400, f"Unknown settings keys: {', '.join(_unknown)}")
         current = _load_settings()
         # Per-key validation for numeric settings: coerce to int and clamp to a
         # sane range so a bad value can't disable the agent or let it run away.
