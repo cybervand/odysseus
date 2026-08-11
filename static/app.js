@@ -356,7 +356,7 @@ function initializeEventListeners() {
     });
     const refreshVerifier = async () => {
       try {
-        const r = await fetch('/api/settings', { credentials: 'same-origin' });
+        const r = await fetch('/api/auth/settings', { credentials: 'same-origin' });
         const s = await r.json();
         verCheck.checked = !!s.agent_verifier_subagent;
       } catch (_) {}
@@ -365,7 +365,7 @@ function initializeEventListeners() {
     verCheck.addEventListener('change', async () => {
       const want = verCheck.checked;
       try {
-        const r = await fetch('/api/settings', {
+        const r = await fetch('/api/auth/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
