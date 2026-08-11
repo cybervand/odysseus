@@ -101,7 +101,7 @@ FUNCTION_TOOL_SCHEMAS = [
                 "properties": {
                     "action": {"type": "string", "enum": ["start", "stop", "restart", "status", "logs", "list", "query", "adopt", "remove", "help"]},
                     "name": {"type": "string", "description": "Server name, e.g. 'skilodge'"},
-                    "command": {"type": "string", "description": "start only: the launch command, e.g. 'python app.py'"},
+                    "command": {"type": "string", "description": "start only: the launch command, e.g. 'python app.py'. For a finished website, build it and serve the static output. A dev server (npm run dev, vite, next dev) is for active editing only, and it MUST listen on 0.0.0.0 — known dev servers get the host flag added for you."},
                     "cwd": {"type": "string", "description": "start only: working directory, e.g. '/app/data/skilodge'"},
                     "port": {"type": "integer", "description": "start only, OPTIONAL: normally omit — the port is assigned and exported as the PORT env var"},
                     "autostart": {"type": "boolean", "description": "start only: relaunch this server automatically when Odysseus restarts"},

@@ -381,6 +381,50 @@ def _save_servers(servers: Dict[str, Dict[str, Any]]) -> None:
     atomic_write_json(str(_SERVERS_FILE), servers, indent=2)
 
 
+_DEV_HOST_FLAGS = {
+    "vite": " -- --host 0.0.0.0",
+    "next": " -- -H 0.0.0.0",
+}
+
+
+def _lan_host_fix(command: str, cwd: Optional[str]):
+    """Make a known dev-server command listen on the LAN.
+
+    Vite and Next bind the loopback address by default. Such a server
+    answers inside the container only. The user's browser gets a
+    refused connection (seen 2026-08-12, hawaii-history-react).
+    Returns (command, note). The note is None when nothing changed.
+    """
+    lowered = command.lower()
+    if "0.0.0.0" in lowered or "--host" in lowered:
+        return command, None
+    if not ("npm run dev" in lowered or "npx vite" in lowered
+            or "vite dev" in lowered or "next dev" in lowered):
+        return command, None
+    framework = None
+    try:
+        with open(os.path.join(cwd or ".", "package.json"), encoding="utf-8") as f:
+            pkg = json.load(f)
+        deps = {}
+        deps.update(pkg.get("dependencies") or {})
+        deps.update(pkg.get("devDependencies") or {})
+        if "vite" in deps:
+            framework = "vite"
+        elif "next" in deps:
+            framework = "next"
+    except (OSError, ValueError):
+        pass
+    if framework is None and "vite" in lowered:
+        framework = "vite"
+    if framework is None:
+        return command, ("note: dev servers often listen on the loopback "
+                         "address only — make sure this one listens on 0.0.0.0")
+    fixed = command + _DEV_HOST_FLAGS[framework]
+    return fixed, (f"note: added a LAN host flag for {framework} — its dev "
+                   "server listens on the loopback address by default, and "
+                   "the LAN gets no answer")
+
+
 def server_start(name: str, command: str, session_id: str,
                  cwd: Optional[str] = None, port: Optional[int] = None,
                  owner: Optional[str] = None,
@@ -392,6 +436,9 @@ def server_start(name: str, command: str, session_id: str,
     Owner/autostart are sticky — a replace without them keeps the old values.
     Raises PortAllocationError with a teaching message on any port problem.
     """
+    # Correct known dev-server commands so the LAN can reach them. The
+    # registry stores the corrected command, and restarts keep it.
+    command, _host_note = _lan_host_fix(command, cwd)
     servers = _load_servers()
     old = servers.get(name)
     assigned = _allocate_port(servers, name, port if port else (old or {}).get("port"))
@@ -406,7 +453,10 @@ def server_start(name: str, command: str, session_id: str,
                      else bool((old or {}).get("autostart")),
                      "started_at": rec["started_at"]}
     _save_servers(servers)
-    return server_status(name)
+    status = server_status(name)
+    if _host_note and isinstance(status, dict):
+        status["note"] = _host_note
+    return status
 
 
 def server_stop(name: str) -> Optional[Dict[str, Any]]:
