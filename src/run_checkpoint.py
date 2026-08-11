@@ -67,6 +67,29 @@ def promote_if_orphaned(session_id: str, session_manager, run_status) -> bool:
     data = read_partial(session_id)
     if not data or not data.get("text"):
         return False
+    # A checkpoint can outlive a run that saved its reply: late agent
+    # rounds write a checkpoint after the save hook cleared it. If the
+    # last assistant row already holds this content, the checkpoint is
+    # stale. Promotion of a stale checkpoint made a twin message
+    # (seen 2026-08-12). Clear it and do not promote.
+    try:
+        sess = session_manager.get_session(session_id)
+        hist = getattr(sess, "history", None) or []
+        last = next((m for m in reversed(hist)
+                     if getattr(m, "role", "") == "assistant"), None)
+        if last is not None:
+            def _norm(s):
+                return " ".join(str(s or "").split())
+            saved = _norm(getattr(last, "content", ""))
+            ckpt = _norm(data["text"])
+            if saved and ckpt and (saved[-300:] in ckpt or ckpt[-300:] in saved):
+                clear_partial(session_id)
+                logger.info(
+                    "[checkpoint] stale checkpoint matches the saved reply "
+                    "for %s — cleared, not promoted", session_id)
+                return False
+    except Exception:
+        pass
     try:
         from core.models import ChatMessage
         # Checkpoint text is the joined round_texts — post reasoning-merge,

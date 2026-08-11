@@ -1865,6 +1865,17 @@ def setup_chat_routes(
                                     extract_skills=user_requested_agent,
                                     allow_background_extraction=not tool_policy.block_all_tool_calls,
                                 )
+                            # The run ended and the reply is saved. Clear
+                            # the round checkpoint now. Late agent rounds
+                            # can write a checkpoint after the save hook
+                            # cleared it. The orphan reaper then promoted
+                            # that stale copy as a twin message
+                            # (seen 2026-08-12).
+                            try:
+                                from src.run_checkpoint import clear_partial as _clear_ckpt
+                                _clear_ckpt(session)
+                            except Exception:
+                                pass
                             _stream_set(session, status="done")
                             yield chunk
                 except (asyncio.CancelledError, GeneratorExit):
