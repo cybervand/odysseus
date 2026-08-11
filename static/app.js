@@ -31,6 +31,7 @@ import settingsModule from './js/settings.js';
 // these import lines and their init calls stay in this upstream file.
 import forkCommandMenu from './js/fork/commandMenu.js';
 import forkCamera from './js/fork/camera.js';
+import forkTokenTicker from './js/fork/tokenTicker.js';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
 import './js/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
@@ -299,6 +300,7 @@ function initializeEventListeners() {
   // these two calls in this upstream file.
   forkCommandMenu.init();
   forkCamera.init();
+  forkTokenTicker.init();
 
   // Paste handler
   window.addEventListener('paste', async (e)=>{

@@ -59,5 +59,18 @@ def test_service_worker_precaches_fork_files():
     sw = Path("static/sw.js").read_text(encoding="utf-8")
     for path in ("/static/css/fork.css",
                  "/static/js/fork/commandMenu.js",
-                 "/static/js/fork/camera.js"):
+                 "/static/js/fork/camera.js",
+                 "/static/js/fork/tokenTicker.js"):
         assert path in sw
+
+
+def test_token_ticker_body_lives_in_fork_module():
+    fork = Path("static/js/fork/tokenTicker.js").read_text(encoding="utf-8")
+    assert "MutationObserver" in fork
+    assert "fork-tps" in fork
+    # app.js may import and start the module. The element id must not
+    # appear there — the body lives in the fork file.
+    assert "fork-tps" not in APP_JS, (
+        "fork marker 'fork-tps' is back inside app.js — move the code "
+        "to static/js/fork/tokenTicker.js (doc 021, phase 2)"
+    )

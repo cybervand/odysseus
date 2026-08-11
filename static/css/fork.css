@@ -3,6 +3,16 @@
    Upstream does not change it. Comments follow ASD-STE100.
    ============================================ */
 
+/* Token ticker: a small rate display beside the model picker */
+.fork-tps {
+  align-self: center;
+  font-family: monospace;
+  font-size: 11px;
+  opacity: 0.6;
+  white-space: nowrap;
+  margin-right: 6px;
+}
+
 /* Command menu (model controls popup): fixed width so changing state
    labels can never reflow the layout */
 .cmd-menu { min-width: 236px; padding: 6px 0; }
