@@ -241,10 +241,23 @@ def _kill(pid: Optional[int]) -> None:
 
 def pending_followups() -> List[Dict[str, Any]]:
     """Finished jobs the agent hasn't been re-invoked for yet. The monitor
-    drains these; mark_followed_up() flips the flag only on success."""
+    drains these; mark_followed_up() flips the flag only on success.
+
+    Registry servers are excluded. A server dies with each deploy and
+    the autostart reconciler revives it — that is registry lifecycle,
+    not chat business. Before this filter, a deploy paged the owning
+    session about its dead dev server, and the session then rebuilt a
+    server that the registry owns (feedback loop, 2026-08-12)."""
     jobs = refresh()
+    try:
+        server_job_ids = {(s or {}).get("job_id")
+                          for s in _load_servers().values()}
+    except Exception:
+        server_job_ids = set()
     return [r for r in jobs.values()
-            if r.get("status") in ("done", "failed") and not r.get("followed_up")]
+            if r.get("status") in ("done", "failed")
+            and not r.get("followed_up")
+            and r.get("id") not in server_job_ids]
 
 
 def mark_followed_up(job_id: str) -> None:

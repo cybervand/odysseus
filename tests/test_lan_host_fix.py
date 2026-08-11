@@ -55,3 +55,18 @@ def test_vite_in_command_without_package_json():
     cmd, note = _lan_host_fix("npx vite dev", "/nowhere")
     assert cmd == "npx vite dev -- --host 0.0.0.0"
     assert "vite" in note
+
+
+def test_server_jobs_stay_out_of_followups(tmp_path, monkeypatch):
+    """A registry server must not page the chat when it dies (deploys
+    kill in-container servers; the reconciler owns revival)."""
+    from src import bg_jobs
+
+    monkeypatch.setattr(bg_jobs, "refresh", lambda: {
+        "j-server": {"id": "j-server", "status": "failed", "followed_up": False},
+        "j-task": {"id": "j-task", "status": "done", "followed_up": False},
+    })
+    monkeypatch.setattr(bg_jobs, "_load_servers",
+                        lambda: {"hawaii": {"job_id": "j-server"}})
+    pending = bg_jobs.pending_followups()
+    assert [r["id"] for r in pending] == ["j-task"]
