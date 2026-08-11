@@ -3,14 +3,27 @@
    Upstream does not change it. Comments follow ASD-STE100.
    ============================================ */
 
-/* Token ticker: a small rate display beside the model picker */
+/* Token ticker: a small rate display at the left of the model picker
+   button. The span lives inside the picker wrap, which is anchored to
+   the top right of the input box. */
 .fork-tps {
-  align-self: center;
   font-family: monospace;
   font-size: 11px;
   opacity: 0.6;
   white-space: nowrap;
-  margin-right: 6px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* The command popup opens above its chip. It gets position fixed with
+   no coordinates from the shared overflow-menu class, which put it on
+   top of the button. Anchor it to the chip wrapper instead. */
+.cmd-wrapper { position: relative; }
+.cmd-wrapper .cmd-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  transform-origin: bottom left;
 }
 
 /* Command menu (model controls popup): fixed width so changing state
