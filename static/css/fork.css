@@ -15,14 +15,12 @@
   vertical-align: middle;
 }
 
-/* The command popup opens above its chip. It gets position fixed with
-   no coordinates from the shared overflow-menu class, which put it on
-   top of the button. Anchor it to the chip wrapper instead. */
-.cmd-wrapper { position: relative; }
+/* The command popup opens above its chip. Absolute positioning got
+   clipped by an ancestor with hidden overflow. The popup uses fixed
+   positioning; commandMenu.js sets the coordinates from the chip at
+   each open. */
 .cmd-wrapper .cmd-menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
+  position: fixed;
   transform-origin: bottom left;
 }
 

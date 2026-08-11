@@ -22,11 +22,23 @@ function init() {
   const verCheck = el('cmd-verifier-check');
   if (!cmdBtn || !cmdMenu || !thinkCheck || !stepper || !verCheck) return;
 
+  // Put the popup directly above the chip. Fixed coordinates ignore
+  // ancestor overflow, which clipped the absolute-positioned popup.
+  const place = () => {
+    const r = cmdBtn.getBoundingClientRect();
+    cmdMenu.style.left = r.left + 'px';
+    cmdMenu.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+    cmdMenu.style.top = 'auto';
+  };
+
   // Open and close the popup. A click on a control does not close it.
   cmdBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    if (cmdMenu.classList.contains('hidden')) place();
     cmdMenu.classList.toggle('hidden');
   });
+  // A resize moves the chip. Close the popup instead of drifting.
+  window.addEventListener('resize', () => cmdMenu.classList.add('hidden'));
   document.addEventListener('click', (e) => {
     if (!cmdMenu.classList.contains('hidden') && !cmdMenu.contains(e.target) && !cmdBtn.contains(e.target)) {
       cmdMenu.classList.add('hidden');
