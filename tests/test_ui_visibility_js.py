@@ -17,6 +17,9 @@ def _node_eval(source):
         check=True,
         capture_output=True,
         text=True,
+        # Explicit stdin: inheriting the parent's handle fails with
+        # WinError 6 in shells that run without one.
+        stdin=subprocess.DEVNULL,
     )
     return json.loads(result.stdout)
 
