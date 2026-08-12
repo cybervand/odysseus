@@ -60,6 +60,10 @@ def test_signature_png_normalization_accepts_data_url_and_raw_base64():
         "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8jpeg").decode("ascii"),
         "A" * (signature_routes._MAX_SIGNATURE_B64 + 4),
     ],
+    # Short ids: pytest stamps the full test id into PYTEST_CURRENT_TEST at
+    # SETUP (before skipif applies); the oversize param as a literal id blows
+    # the Windows 32767-char env limit and errors the whole case.
+    ids=["empty", "not-base64", "not-png", "jpeg-data-url", "oversize-b64"],
 )
 @pytest.mark.skipif("os.name == 'nt'", reason="POSIX-only; authoritative run is in-image (doc 007 step 3b)")
 def test_signature_png_normalization_rejects_invalid_inputs(raw):
