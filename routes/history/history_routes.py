@@ -137,6 +137,30 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             entry["metadata"] = meta
         return entry
 
+    def _promote_orphaned_checkpoint(session_id: str) -> None:
+        """Doc 013 round checkpoints: an in-flight reply whose run died
+        before the end-of-run persist would otherwise vanish on refresh —
+        promote the surviving checkpoint into a real row before serving.
+        (Lived in the session_routes shadow route until the #5929 port.)"""
+        try:
+            from src import agent_runs
+            from src.run_checkpoint import promote_if_orphaned
+            promote_if_orphaned(session_id, session_manager, agent_runs.get_status(session_id))
+        except Exception:
+            pass
+
+    def _overlay_page(entries, session_id: str, roles, page_offset: int) -> None:
+        """Doc 014 phase 3a: overlay log-assembled metadata onto the page.
+        Entries must be UNFILTERED (hidden rows included) so global indexes
+        line up; callers filter hidden afterwards."""
+        try:
+            from src.feed_log import get_log, overlay_rows
+            events = get_log(incognito=False).tail(session_id, 0)
+            if events:
+                overlay_rows(entries, events, roles, page_offset)
+        except Exception:
+            logger.exception("history-from-log overlay failed; serving legacy history")
+
     @router.get("/api/history/{session_id}")
     async def get_session_history(
         request: Request,
@@ -145,6 +169,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         offset: Optional[int] = None,
     ) -> Dict[str, Any]:
         _verify_session_owner(request, session_id)
+        _promote_orphaned_checkpoint(session_id)
         if limit is not None:
             page_limit = max(1, min(int(limit), 100))
             db = SessionLocal()
@@ -170,8 +195,28 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     .limit(page_limit)
                     .all()
                 )
+                page_entries = [_db_history_entry(m) for m in rows]
+                # Feed-log overlay, only for sessions that HAVE a log: the
+                # role sequence for the whole session (light one-column
+                # query) anchors the page's rows to their user turns. The
+                # head() probe keeps log-less sessions at exactly the count
+                # + page queries the paged branch promises.
+                try:
+                    from src.feed_log import get_log
+                    _has_log = get_log(incognito=False).head(session_id) >= 0
+                except Exception:
+                    _has_log = False
+                if _has_log:
+                    all_roles = [
+                        r[0] for r in
+                        db.query(DbChatMessage.role)
+                        .filter(DbChatMessage.session_id == session_id)
+                        .order_by(DbChatMessage.timestamp)
+                        .all()
+                    ]
+                    _overlay_page(page_entries, session_id, all_roles, page_offset)
                 history_dict = [
-                    entry for entry in (_db_history_entry(m) for m in rows)
+                    entry for entry in page_entries
                     if not (entry.get("metadata") or {}).get("hidden")
                 ]
                 return {
@@ -193,26 +238,29 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         except KeyError:
             raise HTTPException(404, f"Session '{session_id}' not found")
 
-        history_dict = []
+        mem_entries = []
         for msg in session.history:
             if isinstance(msg, ChatMessage):
-                # Skip hidden messages (e.g. compaction summaries for AI context)
-                if msg.metadata and msg.metadata.get("hidden"):
-                    continue
                 entry = {"role": msg.role, "content": _history_display_content(msg.content)}
                 if msg.metadata:
-                    entry["metadata"] = msg.metadata
-                history_dict.append(entry)
+                    # Copy: the overlay mutates metadata and must never write
+                    # back into the in-memory session (the model's context).
+                    entry["metadata"] = dict(msg.metadata)
+                mem_entries.append(entry)
             elif isinstance(msg, dict):
-                if msg.get("metadata", {}).get("hidden"):
-                    continue
                 entry = {
                     "role": msg.get("role", ""),
                     "content": _history_display_content(msg.get("content", "")),
                 }
                 if msg.get("metadata"):
-                    entry["metadata"] = msg["metadata"]
-                history_dict.append(entry)
+                    entry["metadata"] = dict(msg["metadata"])
+                mem_entries.append(entry)
+        _overlay_page(mem_entries, session_id, [e["role"] for e in mem_entries], 0)
+        # Hidden messages (e.g. compaction summaries for AI context) are
+        # filtered AFTER the overlay so global indexes stay aligned.
+        history_dict = [
+            e for e in mem_entries if not (e.get("metadata") or {}).get("hidden")
+        ]
 
         # Fallback: load from DB if in-memory renders empty. Display only —
         # get_session above is the hydration seam, so nothing here writes back
@@ -227,9 +275,11 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     .order_by(DbChatMessage.timestamp)
                     .all()
                 )
+                fb_entries = [_db_history_entry(m) for m in db_messages]
+                _overlay_page(fb_entries, session_id, [e["role"] for e in fb_entries], 0)
                 # Response excludes hidden messages, matching the in-memory path.
                 history_dict = [
-                    entry for entry in (_db_history_entry(m) for m in db_messages)
+                    entry for entry in fb_entries
                     if not (entry.get("metadata") or {}).get("hidden")
                 ]
             except Exception as e:

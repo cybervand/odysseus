@@ -144,3 +144,76 @@ def test_tag_model_think_not_double_wrapped():
     ]
     (run,) = assemble_history(events)
     assert run["round_texts"][0].count("<think>") == 1
+
+
+# ── overlay_rows: the page-aware overlay (post-#5929 port) ──
+from src.feed_log import overlay_rows
+
+
+def _row(role, content="", **md):
+    r = {"role": role, "content": content}
+    if md:
+        r["metadata"] = dict(md)
+    return r
+
+
+TWO_TURN_EVENTS = [
+    _ev("user_msg", "turn one"),
+    _ev("thinking", "t1 plan"),
+    _ev("reply", "did one"),
+    _ev("user_msg", "turn two"),
+    _ev("tool_start", "bash"),
+    _tool_end("bash", "ok", command="ls", exit_code=0),
+    _ev("reply", "did two"),
+]
+
+
+def test_overlay_full_page_alignment():
+    rows = [_row("user", "turn one"), _row("assistant", "did one"),
+            _row("user", "turn two"), _row("assistant", "did two")]
+    roles = [r["role"] for r in rows]
+    assert overlay_rows(rows, TWO_TURN_EVENTS, roles, 0) is True
+    assert rows[1]["metadata"]["history_source"] == "feed_log"
+    assert rows[1]["metadata"]["round_texts"][0].startswith("<think>")
+    assert rows[3]["metadata"]["tool_events"][0]["command"] == "ls"
+
+
+def test_overlay_paged_offset_maps_to_correct_run():
+    # Page holds only the SECOND turn's rows; global roles anchor them.
+    roles = ["user", "assistant", "user", "assistant"]
+    page = [_row("user", "turn two"), _row("assistant", "did two")]
+    assert overlay_rows(page, TWO_TURN_EVENTS, roles, 2) is True
+    md = page[1]["metadata"]
+    assert md["history_source"] == "feed_log"
+    assert md["tool_events"][0]["tool"] == "bash"
+    assert "t1 plan" not in "".join(md["round_texts"])  # not turn one's data
+
+
+def test_overlay_bails_when_log_missing_turns():
+    # Three user turns in rows, two in the log -> no overlay anywhere.
+    roles = ["user", "assistant", "user", "assistant", "user", "assistant"]
+    rows = [_row(r) for r in roles]
+    assert overlay_rows(rows, TWO_TURN_EVENTS, roles, 0) is False
+    assert all("metadata" not in r or "history_source" not in r.get("metadata", {})
+               for r in rows)
+
+
+def test_overlay_skips_twin_assistant_turns():
+    roles = ["user", "assistant", "assistant", "user", "assistant"]
+    rows = [_row(r) for r in roles]
+    overlay_rows(rows, TWO_TURN_EVENTS, roles, 0)
+    assert "history_source" not in (rows[1].get("metadata") or {})
+    assert "history_source" not in (rows[2].get("metadata") or {})
+    assert (rows[4].get("metadata") or {}).get("history_source") == "feed_log"
+
+
+def test_overlay_content_tail_preserved():
+    events = [
+        _ev("user_msg", "build it"),
+        _ev("thinking", "plan plan plan"),
+        _ev("tool_start", "write_file"),
+        _tool_end("write_file", "ok"),
+    ]
+    rows = [_row("user", "build it"), _row("assistant", "Done.")]
+    overlay_rows(rows, events, ["user", "assistant"], 0)
+    assert rows[1]["metadata"]["round_texts"][-1] == "Done."

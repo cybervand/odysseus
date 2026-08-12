@@ -395,6 +395,76 @@ def assemble_history(events):
     return out
 
 
+def overlay_rows(rows, events, roles, page_offset: int = 0) -> bool:
+    """Doc 014 phase 3a, page-aware: overlay log-assembled metadata
+    (round_texts + tool_events) onto a PAGE of history rows.
+
+    `rows` is the page (dicts with role/content/metadata), `roles` the full
+    ordered role list for the session (hidden rows included — global indexes
+    must match the DB), `page_offset` the page's global start index.
+    Alignment is by user turn: the i-th user row starts run i. Conservative
+    by design — any misalignment (log doesn't cover every turn, twin
+    assistant rows in one turn) leaves rows untouched. Returns True when at
+    least one row was overlaid.
+
+    Lives here (not in a route) so the canonical paged history endpoint and
+    any future consumer share one implementation."""
+    if not rows or not events or not roles:
+        return False
+    runs = assemble_history(events)
+    user_turns = sum(1 for r in roles if r == "user")
+    if user_turns != len(runs):
+        return False  # log doesn't cover this session 1:1 — serve legacy
+    # global row index -> run index (assistant rows only); count assistants
+    # per turn so twin rows can be skipped
+    row_run = {}
+    per_turn_assistants = {}
+    turn = -1
+    for idx, role in enumerate(roles):
+        if role == "user":
+            turn += 1
+        elif role == "assistant" and turn >= 0:
+            row_run[idx] = turn
+            per_turn_assistants[turn] = per_turn_assistants.get(turn, 0) + 1
+    applied = False
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict) or row.get("role") != "assistant":
+            continue
+        g = page_offset + i
+        t = row_run.get(g)
+        if t is None or per_turn_assistants.get(t, 0) != 1:
+            continue
+        asm = runs[t] if t < len(runs) else None
+        if not asm:
+            continue  # turn had no agent activity (plain chat row)
+        md = row.setdefault("metadata", {})
+        if asm["round_texts"]:
+            # The log has no reply events for content-mute rounds (gemma's
+            # "Done." lives only in the row content) — the overlay must
+            # never hide talking the log missed. Short un-captured content
+            # tails are appended as a final round.
+            _rtexts = list(asm["round_texts"])
+            _content = (row.get("content") or "").strip()
+            if (_content and len(_content) < 500
+                    and _content not in "\n\n".join(_rtexts)):
+                _rtexts.append(_content)
+            md["round_texts"] = _rtexts
+            # Thinking lives inline in round_texts; drop the metadata copy
+            # so the renderer's graft doesn't render it twice.
+            md.pop("thinking", None)
+        # Log tool events carry command/output only after the enrichment
+        # ship; keep richer legacy events until the log's are at least as
+        # informative.
+        _legacy = md.get("tool_events") or []
+        _log_has_detail = any(t2.get("command") or t2.get("output")
+                              for t2 in asm["tool_events"])
+        if asm["tool_events"] and (_log_has_detail or not _legacy):
+            md["tool_events"] = asm["tool_events"]
+        md["history_source"] = "feed_log"
+        applied = True
+    return applied
+
+
 def _tool_name(ev) -> str:
     """tool_end payload is either a bare name or JSON {tool, status}."""
     p = ev.get("payload", "")
