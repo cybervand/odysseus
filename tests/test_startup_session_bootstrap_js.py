@@ -23,13 +23,15 @@ _IMPORT_REWRITES = {
     "import uiModule, { autoResize, styledPrompt } from './ui.js';": (
         "import uiModule, { autoResize, styledPrompt } from './ui.mjs';"
     ),
-    "import chatRenderer from './chatRenderer.js?v=20260722ctxheader1';": (
+    # Buster-free specifiers: the fork strips ALL version-query imports
+    # (4a09481b — one module instance per file).
+    "import chatRenderer from './chatRenderer.js';": (
         "import chatRenderer from './chatRenderer.mjs';"
     ),
     "import { providerLogo } from './providers.js';": (
         "import { providerLogo } from './providers.mjs';"
     ),
-    "import { initModelPicker, updateModelPicker } from './modelPicker.js?v=20260722ctxheader1';": (
+    "import { initModelPicker, updateModelPicker } from './modelPicker.js';": (
         "import { initModelPicker, updateModelPicker } from './modelPicker.mjs';"
     ),
     "import themeModule from './theme.js';": "import themeModule from './theme.mjs';",
@@ -192,6 +194,11 @@ function makeWorld() {
   globalThis.cancelAnimationFrame = (id) => cancelledFrames.add(id);
   globalThis.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
   globalThis.clearTimeout = () => {};
+  // The fork's sessions.js starts a module-level live-attach poller
+  // (setInterval); a real interval keeps node alive past the harness
+  // timeout, so intervals are inert here like timeouts are.
+  globalThis.setInterval = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  globalThis.clearInterval = () => {};
   globalThis.__sessionErrors = [];
 
   return {
