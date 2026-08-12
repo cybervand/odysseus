@@ -1,6 +1,11 @@
 # 001 — gpt-oss harmony tool-name aliasing
 
-**Status:** Shipped (4dcb28f2); upstream issue #5877 / PR #5878
+**Status:** Shipped (4dcb28f2); **MERGED UPSTREAM** 2026-08-12 — PR #5878
+accepted into upstream dev (merge f896c07, reviewer alteixeira20: "narrowly
+confined to the transport layer, preserves non-gpt-oss behavior and caller
+schemas ... no blocking issues"). Once the fork syncs past that merge, the
+local carry of this patch can be dropped — first fork divergence retired
+by upstreaming (the doc 001 → upstream path the fork strategy bet on).
 
 ## Problem
 
