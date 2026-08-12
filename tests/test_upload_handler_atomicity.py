@@ -301,6 +301,12 @@ def test_unchanged_upload_index_uses_cache(tmp_path, monkeypatch):
     assert handler._load_upload_index() == original
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="simulates a POSIX rename over an OPEN file mid-read; Windows "
+           "refuses that replace (WinError 5), so the race cannot be staged "
+           "here — authoritative run is in-image (doc 007 step 3b)",
+)
 def test_upload_index_retries_when_replaced_during_read(tmp_path, monkeypatch):
     """Do not cache old JSON under the signature of a newer atomic replace."""
     handler = _make_handler(tmp_path)
