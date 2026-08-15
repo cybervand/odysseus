@@ -332,7 +332,10 @@ def _server_command_guard(content: str):
             "Use your manage_server tool instead: "
             '{"action": "start", "name": "myapp", "command": "<the command>", '
             '"cwd": "<project dir>"} — the port is ASSIGNED automatically and '
-            "exported to your app as the PORT env var (do not pick one). Then "
+            "exported to your app as the PORT env var (do not pick one). If "
+            "the program takes its port as an ARGUMENT, write $PORT in the "
+            'command — e.g. "python3 -m http.server $PORT" — it expands at '
+            "launch. Then "
             'manage_server {"action": "restart", "name": "myapp"} after EVERY '
             "code edit (edits do not apply to a running process), and "
             '{"action": "logs", "name": "myapp"} to read its output. '

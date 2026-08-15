@@ -394,23 +394,33 @@ def _save_servers(servers: Dict[str, Dict[str, Any]]) -> None:
     atomic_write_json(str(_SERVERS_FILE), servers, indent=2)
 
 
-_DEV_HOST_FLAGS = {
-    "vite": " -- --host 0.0.0.0",
-    "next": " -- -H 0.0.0.0",
+_DEV_FIX_FLAGS = {
+    # (host flag, port flag) per framework. The port flag matters because
+    # vite/next take the port as an ARGUMENT and never read the PORT env
+    # var — without it the registry's assigned port is fiction (observed
+    # 2026-08-15: registry said 13000, vite sat on 5173). $PORT expands at
+    # launch (PORT is in the child env; the command runs through a shell).
+    "vite": ("--host 0.0.0.0", "--port $PORT"),
+    "next": ("-H 0.0.0.0", "-p $PORT"),
 }
 
 
 def _lan_host_fix(command: str, cwd: Optional[str]):
-    """Make a known dev-server command listen on the LAN.
+    """Make a known dev-server command listen on the LAN, on the ASSIGNED port.
 
-    Vite and Next bind the loopback address by default. Such a server
-    answers inside the container only. The user's browser gets a
-    refused connection (seen 2026-08-12, hawaii-history-react).
+    Vite and Next bind the loopback address by default and take the port as
+    an argument (never the PORT env var). Such a server answers inside the
+    container only — or on a port the registry does not know about (both
+    seen live: refused LAN connection 2026-08-12; registry said 13000 while
+    vite served 5173 on 2026-08-15). Each missing flag is injected
+    independently, and injection is SEPARATOR-AWARE: `npm run <script>`
+    needs one `--` to pass flags through — but exactly one. Appending a
+    second `--` makes vite read `--host` as a positional and silently stay
+    on the loopback (also seen live 2026-08-15). Direct vite/next commands
+    take flags with no separator at all.
     Returns (command, note). The note is None when nothing changed.
     """
     lowered = command.lower()
-    if "0.0.0.0" in lowered or "--host" in lowered:
-        return command, None
     if not ("npm run dev" in lowered or "npx vite" in lowered
             or "vite dev" in lowered or "next dev" in lowered):
         return command, None
@@ -430,12 +440,31 @@ def _lan_host_fix(command: str, cwd: Optional[str]):
     if framework is None and "vite" in lowered:
         framework = "vite"
     if framework is None:
+        if "0.0.0.0" in lowered or "--host" in lowered:
+            return command, None
         return command, ("note: dev servers often listen on the loopback "
                          "address only — make sure this one listens on 0.0.0.0")
-    fixed = command + _DEV_HOST_FLAGS[framework]
-    return fixed, (f"note: added a LAN host flag for {framework} — its dev "
-                   "server listens on the loopback address by default, and "
-                   "the LAN gets no answer")
+    host_flag, port_flag = _DEV_FIX_FLAGS[framework]
+    add = []
+    if "0.0.0.0" not in lowered and "--host" not in lowered and " -h " not in lowered:
+        add.append(host_flag)
+    _has_port = ("--port" in lowered or "$port" in lowered
+                 or (framework == "next" and " -p " in lowered))
+    if not _has_port:
+        add.append(port_flag)
+    if not add:
+        return command, None
+    flags = " ".join(add)
+    if "npm run" in lowered and " -- " not in command and not command.rstrip().endswith(" --"):
+        fixed = command.rstrip() + " -- " + flags
+    else:
+        # Either the passthrough separator already exists (extra flags ride
+        # it) or the command invokes vite/next directly (no separator).
+        fixed = command.rstrip() + " " + flags
+    return fixed, (f"note: added {flags!r} for {framework} — its dev server "
+                   "listens on the loopback address by default and takes the "
+                   "port as an argument, so the LAN and the assigned port "
+                   "get no answer without them")
 
 
 def server_start(name: str, command: str, session_id: str,

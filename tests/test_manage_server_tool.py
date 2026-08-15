@@ -50,6 +50,11 @@ def test_guard_blocks_known_server_commands():
         assert g is not None, cmd
         assert "manage_server" in g["error"]
         assert "restart" in g["error"]          # teaches the stale-process lesson
+        # Argv-port teaching (2026-08-15 audit): the env-var promise alone
+        # sent a literal follower into a dead-port round — http.server and
+        # vite take the port as an ARGUMENT. The guard must teach $PORT
+        # up front, not leave it to the start-result warning.
+        assert "$PORT" in g["error"]
 
 
 def test_guard_allows_normal_commands():

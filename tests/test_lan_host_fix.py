@@ -17,24 +17,43 @@ def _pkg(tmp_path, deps):
     return str(tmp_path)
 
 
-def test_vite_gets_host_flag(tmp_path):
+def test_vite_gets_host_and_port_flags(tmp_path):
     cwd = _pkg(tmp_path, {"vite": "^5.0.0"})
     cmd, note = _lan_host_fix("npm run dev", cwd)
-    assert cmd == "npm run dev -- --host 0.0.0.0"
+    assert cmd == "npm run dev -- --host 0.0.0.0 --port $PORT"
     assert "vite" in note
 
 
-def test_next_gets_host_flag(tmp_path):
+def test_next_gets_host_and_port_flags(tmp_path):
     cwd = _pkg(tmp_path, {"next": "^14.0.0"})
     cmd, note = _lan_host_fix("npm run dev", cwd)
-    assert cmd == "npm run dev -- -H 0.0.0.0"
+    assert cmd == "npm run dev -- -H 0.0.0.0 -p $PORT"
     assert "next" in note
 
 
-def test_existing_host_binding_is_kept(tmp_path):
+def test_existing_host_binding_still_gets_port(tmp_path):
+    # vite never reads the PORT env var: without the port flag the
+    # registry's assigned port is fiction (registry said 13000, vite
+    # served 5173 — 2026-08-15).
     cwd = _pkg(tmp_path, {"vite": "^5.0.0"})
     cmd, note = _lan_host_fix("npm run dev -- --host 0.0.0.0", cwd)
-    assert cmd == "npm run dev -- --host 0.0.0.0"
+    assert cmd == "npm run dev -- --host 0.0.0.0 --port $PORT"
+    assert note is not None
+
+
+def test_existing_separator_never_doubled(tmp_path):
+    # A second `--` makes vite read --host as a positional and silently
+    # stay on the loopback (2026-08-15, hawaii-history).
+    cwd = _pkg(tmp_path, {"vite": "^5.0.0"})
+    cmd, note = _lan_host_fix("npm run dev -- --port 13000 --strictPort", cwd)
+    assert cmd == "npm run dev -- --port 13000 --strictPort --host 0.0.0.0"
+    assert cmd.count(" -- ") == 1
+
+
+def test_fully_specified_command_untouched(tmp_path):
+    cwd = _pkg(tmp_path, {"vite": "^5.0.0"})
+    cmd, note = _lan_host_fix("npm run dev -- --host 0.0.0.0 --port $PORT", cwd)
+    assert cmd == "npm run dev -- --host 0.0.0.0 --port $PORT"
     assert note is None
 
 
@@ -51,9 +70,12 @@ def test_unknown_dev_server_gets_a_note_only(tmp_path):
     assert "0.0.0.0" in note
 
 
-def test_vite_in_command_without_package_json():
+def test_direct_vite_gets_flags_without_separator():
+    # `npx vite` takes flags directly; a `--` would turn them into
+    # positionals (the old behavior appended one — that was the bug).
     cmd, note = _lan_host_fix("npx vite dev", "/nowhere")
-    assert cmd == "npx vite dev -- --host 0.0.0.0"
+    assert cmd == "npx vite dev --host 0.0.0.0 --port $PORT"
+    assert " -- " not in cmd
     assert "vite" in note
 
 
