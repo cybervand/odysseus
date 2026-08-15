@@ -312,3 +312,19 @@ class TestGetContextLength:
 
         endpoint = "http://100.117.136.97:34521/v1/chat/completions"
         assert model_context.get_context_length(endpoint, "unknown-proxy-model") == model_context.DEFAULT_CONTEXT
+
+
+class TestQwen38ServedWindow:
+    """qwen3.8's SERVED window on local Ollama is 32768, not the 131072 the
+    generic 'qwen3' entry implies (and not the 262144 native). The mismatch
+    let Ollama silently drop the prompt head past 32K while the app's
+    trimmer idled (observed 2026-08-15, "extremely forgetful" agent runs).
+    Longest-key-wins matching must let 'qwen3.8' outbid 'qwen3'."""
+
+    def test_qwen38_tags_resolve_served_window(self):
+        assert _lookup_known("qwen3.8:27b") == 32768
+        assert _lookup_known("qwen3.8:27b-mtp-q4_K_M") == 32768
+
+    def test_generic_qwen3_keeps_its_window(self):
+        assert _lookup_known("qwen3-coder:30b") == 131072
+        assert _lookup_known("qwen3.5:9b") == 131072

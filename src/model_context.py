@@ -181,6 +181,14 @@ KNOWN_CONTEXT_WINDOWS = {
     'llama-3': 131072,
 
     # --- Qwen ---
+    # qwen3.8: native window is 262144, but local Ollama SERVES it at 32768
+    # (its own default; /v1/models does not report the served window). The
+    # generic 'qwen3' entry made the app believe 131072 — so the trimmer
+    # idled while Ollama silently dropped the PROMPT HEAD (system prompt,
+    # task) past 32K: observed 2026-08-15 as "extremely forgetful" agent
+    # runs. Longest-key-wins matching lets this entry outbid 'qwen3'.
+    # Revisit if a pinned-num_ctx variant tag changes the served window.
+    'qwen3.8': 32768,
     'qwen3': 131072,
     'qwen2.5': 131072,
     'qwen2': 32768,
