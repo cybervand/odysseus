@@ -1,6 +1,11 @@
 # 016 — Project ledger: evidence-backed checkboxes as the model's own memory
 
-**Status:** Draft (designed 2026-08-06 from session 9bdad2b1 findings; companion fix: recovered_partial extractor bypass)
+**Status:** Shipped (9d3d404c, deployed sync1 2026-08-14; companion
+recovered_partial fix 16baff34). Validated live 2026-08-15: the ledger
+injected on every turn of the qwen3.8 hawaii-history session and the
+model retained its image URLs across turns — the exact failure this doc
+was written from (gemma, 9bdad2b1) did not recur. Open: updater 502
+during model contention wants a retry.
 
 ## Problem
 

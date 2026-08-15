@@ -57,4 +57,10 @@ why — read them before re-litigating or extending an area.
 | [013](013-prompt-ladder.md) | Prompt ladder (rung methodology, model findings) | Living document |
 | [014](014-live-chat-feed.md) | Event-log-first chat feed (feed_events.db) | Phases 1+3a shipped; 2+4 pending |
 | [015](015-toolchain-provisioning.md) | Toolchain provisioning (manage_framework, persistent tier) | Shipped (layers 2-4) |
-| [016](016-project-ledger.md) | Project ledger: evidence-backed checkboxes as model memory | Draft |
+| [016](016-project-ledger.md) | Project ledger: evidence-backed checkboxes as model memory | Shipped (sync1); injecting live |
+| [017](017-server-service.md) | Server service (registry, assigned ports, manage_server) | Shipped; evolving |
+| [018](018-virtual-experts.md) | Virtual experts lab (serving shim, expert routing) | Lab running (contention protocol) |
+| [019](019-vision-and-eyes.md) | Vision track (attachments, rehydration, browser eyes) | Partially shipped; read_attachment open |
+| [020](020-tool-help.md) | Tool help actions (unknown action returns the manual) | Shipped for manage_server; rollout open |
+| [021](021-qol-code-slimming.md) | QoL code slimming (loud seams, fork extraction) | Phases 1+2 shipped |
+| [022](022-section-audit-register.md) | Section audit register (the take-it-apart campaign) | Living document |
