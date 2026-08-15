@@ -433,10 +433,17 @@ def _set_cached_response(cache_key: str, response: str) -> None:
 
 # ── Anthropic native API adapter ──
 
+# Picker fallback list for Anthropic endpoints (model_routes returns it when
+# the live /v1/models catalog is unavailable). Newest first. The Claude 5
+# generation uses bare ids with NO date suffix.
 ANTHROPIC_MODELS = [
-    "claude-opus-4-20250514", "claude-opus-4",
-    "claude-sonnet-4-20250514", "claude-sonnet-4", "claude-sonnet-4-5-20250929", "claude-sonnet-4-5",
-    "claude-haiku-4-20250514", "claude-haiku-4", "claude-haiku-3-5-20241022", "claude-haiku-3-5",
+    "claude-fable-5",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-haiku-4-5",
+    "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+    "claude-sonnet-4-6", "claude-sonnet-4-5",
+    "claude-opus-4-5",
 ]
 
 
@@ -1311,8 +1318,21 @@ def _anthropic_rejects_temperature(model: str) -> bool:
     # this, every Opus 5 call kept `temperature` and failed with HTTP 400 — visible
     # only on paths that pass a temperature, e.g. scheduled tasks inheriting
     # `stream_agent_loop`'s 0.3 default, which returned empty responses.
+    low = model.lower()
+    # Fable/Mythos (the Claude 5 top tier) reject sampling params at every
+    # version they have ever shipped — no version gate needed.
+    if re.search(r"(?<![a-z])(fable|mythos)(?![a-z])", low):
+        return True
+    # Sonnet rejects non-default sampling from Sonnet 5 onward (Sonnet 4.6
+    # and earlier still accept temperature). Same anchored-version parsing
+    # rules as the opus match below.
+    smatch = re.search(
+        r"(?<![a-z])sonnet[-_]?(\d{1,2})(?!\d)(?:[-_.](\d{1,2})(?!\d))?", low
+    )
+    if smatch and int(smatch.group(1)) >= 5:
+        return True
     match = re.search(
-        r"(?<![a-z])opus[-_]?(\d{1,2})(?!\d)(?:[-_.](\d{1,2})(?!\d))?", model.lower()
+        r"(?<![a-z])opus[-_]?(\d{1,2})(?!\d)(?:[-_.](\d{1,2})(?!\d))?", low
     )
     if not match:
         return False

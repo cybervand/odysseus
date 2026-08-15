@@ -45,6 +45,24 @@ def test_opus_47_plus_rejects_temperature(model):
 @pytest.mark.parametrize(
     "model",
     [
+        # The Claude 5 top tier rejects sampling at every version it has
+        # ever shipped — no version gate.
+        "claude-fable-5",
+        "claude-mythos-5",
+        "anthropic/claude-fable-5",
+        # Sonnet rejects non-default sampling from Sonnet 5 onward.
+        "claude-sonnet-5",
+        "claude-sonnet-5-20260301",
+        "claude-sonnet-6",
+    ],
+)
+def test_claude5_family_rejects_temperature(model):
+    assert _anthropic_rejects_temperature(model) is True
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
         "claude-opus-4-6",
         "claude-opus-4-5",
         "claude-opus-4-1",
